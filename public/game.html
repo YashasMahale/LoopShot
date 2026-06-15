@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>LOOPSHOT — tap on the mark</title>
+  <meta name="description" content="One tap. One loop. How far can you go?">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Back to Main Menu Button -->
+  <button class="btn-back-menu" onclick="location.href='/'">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;">
+      <line x1="19" y1="12" x2="5" y2="12"></line>
+      <polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+    Menu
+  </button>
+
+  <canvas id="game"></canvas>
+
+  <!-- Game HUD overlays -->
+  <div class="game-hud">
+    <div id="game-mode-badge" class="mode-badge-game">EASY</div>
+    <div id="score" style="display:none">0</div>
+    <div id="combo">PERFECT ×0</div>
+  </div>
+
+  <div id="pop"></div>
+
+  <!-- Game Over Screen -->
+  <div class="screen hidden" id="over" style="display:none">
+    <div class="stat-label">score</div>
+    <div class="big-num" id="finalScore">0</div>
+    <div class="best-chip" id="bestChip">BEST 0</div>
+    <div class="close-call" id="closeCall" style="display:none">SO CLOSE — you were a hair off!</div>
+    <div class="hint">tap anywhere to retry</div>
+  </div>
+
+  <div id="flash"></div>
+
+  <script src="/js/game.js"></script>
+</body>
+</html>

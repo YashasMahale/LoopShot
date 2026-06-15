@@ -1,0 +1,16 @@
+{
+  "name": "loopshot",
+  "version": "1.0.0",
+  "description": "LoopShot game with Express.js backend for Vercel",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js",
+    "dev": "node api/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
