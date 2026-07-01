@@ -132,6 +132,31 @@
   let globalBestScore = 0;
   let globalBestUser = 'Guest';
 
+  async function fetchPersonalBest() {
+    const token = localStorage.getItem('ls_token');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.bestScores) {
+          localStorage.setItem('ls_best_easy', data.bestScores.easy || 0);
+          localStorage.setItem('ls_best_hard', data.bestScores.hard || 0);
+          localStorage.setItem('ls_best_nightmare', data.bestScores.nightmare || 0);
+          const maxScore = Math.max(data.bestScores.easy || 0, data.bestScores.hard || 0, data.bestScores.nightmare || 0);
+          localStorage.setItem('ls_best', maxScore);
+          
+          // Refresh the local variable
+          best = loadBest();
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch personal best:", e);
+    }
+  }
+
   async function fetchGlobalBest() {
     try {
       const res = await fetch('/api/scores');
@@ -229,7 +254,8 @@
       elModeBadge.className = 'mode-badge-game ' + mode;
     }
 
-    // Fetch latest global best for this mode
+    // Fetch and refresh scores on game start
+    fetchPersonalBest();
     fetchGlobalBest();
   }
   function endGame(nearMiss) {
