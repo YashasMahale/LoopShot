@@ -15,27 +15,46 @@ let globalScores = {
   nightmare: { score: 0, username: 'Guest' }
 };
 
-// Check if Vercel KV environment variables are present
-let useKV = false;
-let kv = null;
-if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-  try {
-    kv = require('@vercel/kv').kv;
-    useKV = true;
-    console.log('Vercel KV integration enabled for global high scores.');
-  } catch (e) {
-    console.warn('Failed to load @vercel/kv package:', e.message);
+// Check if MongoDB environment variable is present
+let mongoClient = null;
+let mongoDb = null;
+const { MongoClient } = require('mongodb');
+
+async function connectToDatabase() {
+  if (mongoClient && mongoDb) {
+    return { client: mongoClient, db: mongoDb };
   }
+  if (!process.env.MONGODB_URI) {
+    throw new Error('MONGODB_URI environment variable is missing');
+  }
+  // Connect and reuse the connection
+  const client = await MongoClient.connect(process.env.MONGODB_URI);
+  const db = client.db('loopshot');
+  mongoClient = client;
+  mongoDb = db;
+  return { client, db };
 }
 
 // Helper to fetch global high scores
 async function getGlobalScores() {
-  if (useKV && kv) {
+  if (process.env.MONGODB_URI) {
     try {
-      const scores = await kv.get('loopshot_global_scores');
-      if (scores) return scores;
+      const { db } = await connectToDatabase();
+      const collection = db.collection('scores');
+      const docs = await collection.find({}).toArray();
+      const scores = {
+        easy: { score: 0, username: 'Guest' },
+        hard: { score: 0, username: 'Guest' },
+        nightmare: { score: 0, username: 'Guest' }
+      };
+      docs.forEach(doc => {
+        if (doc._id && scores[doc._id]) {
+          scores[doc._id] = { score: doc.score, username: doc.username };
+        }
+      });
+      return scores;
     } catch (e) {
-      console.error('Failed to get scores from Vercel KV:', e);
+      console.error('Failed to get scores from MongoDB:', e);
     }
   }
   return globalScores;
@@ -50,22 +69,28 @@ async function updateGlobalScore(mode, score, username) {
   const current = await getGlobalScores();
   
   if (!current[cleanMode] || cleanScore > current[cleanMode].score) {
-    current[cleanMode] = {
+    const updatedRecord = {
       score: cleanScore,
       username: cleanUsername,
       timestamp: Date.now()
     };
 
-    if (useKV && kv) {
+    if (process.env.MONGODB_URI) {
       try {
-        await kv.set('loopshot_global_scores', current);
+        const { db } = await connectToDatabase();
+        const collection = db.collection('scores');
+        await collection.updateOne(
+          { _id: cleanMode },
+          { $set: updatedRecord },
+          { upsert: true }
+        );
       } catch (e) {
-        console.error('Failed to save scores to Vercel KV:', e);
+        console.error('Failed to save score to MongoDB:', e);
       }
     } else {
-      globalScores = current;
+      globalScores[cleanMode] = updatedRecord;
     }
-    return { updated: true, globalBest: current[cleanMode] };
+    return { updated: true, globalBest: updatedRecord };
   }
 
   return { updated: false, globalBest: current[cleanMode] };
