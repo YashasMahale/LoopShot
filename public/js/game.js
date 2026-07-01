@@ -280,8 +280,12 @@
     requestAnimationFrame(() => elOver.classList.remove('hidden'));
     inputLock = performance.now() + 450;
 
-    // Submit score to global database
-    submitScore(mode, score);
+    // Submit score to global database if they made a hit, or fetch the latest global best as a fallback
+    if (score > 0) {
+      submitScore(mode, score);
+    } else {
+      fetchGlobalBest();
+    }
   }
 
   function norm(a) { a %= Math.PI * 2; return a < 0 ? a + Math.PI * 2 : a; }
