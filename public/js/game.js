@@ -128,6 +128,61 @@
     elOver = $('over'), elFinal = $('finalScore'),
     elBest = $('bestChip'), elClose = $('closeCall'), elFlash = $('flash');
 
+  // ---------- Global High Score state & helpers ----------
+  let globalBestScore = 0;
+  let globalBestUser = 'Guest';
+
+  async function fetchGlobalBest() {
+    try {
+      const res = await fetch('/api/scores');
+      if (res.ok) {
+        const scores = await res.json();
+        const modeBest = scores[mode];
+        if (modeBest) {
+          updateGlobalHUD(modeBest);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch global best:", e);
+    }
+  }
+
+  function updateGlobalHUD(bestObj) {
+    if (!bestObj) return;
+    globalBestScore = bestObj.score;
+    globalBestUser = bestObj.username;
+    
+    const elGlobalBest = $('globalBestChip');
+    if (elGlobalBest) {
+      elGlobalBest.textContent = `GLOBAL ${globalBestScore} (${globalBestUser})`;
+      if (score > globalBestScore) {
+        elGlobalBest.style.background = '#ffd166';
+        elGlobalBest.style.color = '#16121f';
+      } else {
+        elGlobalBest.style.background = 'rgba(255, 209, 102, 0.12)';
+        elGlobalBest.style.color = '#ffd166';
+      }
+    }
+  }
+
+  async function submitScore(mode, score) {
+    if (score <= 0) return;
+    const username = localStorage.getItem('ls_user') || 'Guest';
+    try {
+      const res = await fetch('/api/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, score, username })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        updateGlobalHUD(data.globalBest);
+      }
+    } catch (e) {
+      console.warn("Failed to submit score:", e);
+    }
+  }
+
   function popText(t) {
     elPop.textContent = t;
     elPop.classList.remove('go'); void elPop.offsetWidth;
@@ -168,6 +223,9 @@
       elModeBadge.textContent = mode + ' MODE';
       elModeBadge.className = 'mode-badge-game ' + mode;
     }
+
+    // Fetch latest global best for this mode
+    fetchGlobalBest();
   }
   function endGame(nearMiss) {
     state = S.OVER;
@@ -190,6 +248,9 @@
     elOver.style.display = 'flex';
     requestAnimationFrame(() => elOver.classList.remove('hidden'));
     inputLock = performance.now() + 450;
+
+    // Submit score to global database
+    submitScore(mode, score);
   }
 
   function norm(a) { a %= Math.PI * 2; return a < 0 ? a + Math.PI * 2 : a; }

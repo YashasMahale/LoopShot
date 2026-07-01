@@ -967,13 +967,27 @@ body {
   font-weight: 500;
 }
 
+.mode-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
 .mode-badge {
   font-family: 'Bungee', sans-serif;
-  font-size: 12px;
+  font-size: 11px;
   background: rgba(22, 18, 31, 0.4);
-  padding: 6px 12px;
-  border-radius: 10px;
+  padding: 5px 10px;
+  border-radius: 8px;
   border: 1px solid var(--glass-border);
+  text-transform: uppercase;
+}
+
+.global-badge {
+  background: rgba(255, 209, 102, 0.12);
+  border-color: rgba(255, 209, 102, 0.45);
+  color: #ffd166;
 }
 
 .mode-card:hover {

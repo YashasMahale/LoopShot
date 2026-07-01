@@ -105,6 +105,7 @@
     if (clerkActive && window.Clerk && window.Clerk.user) {
       const user = window.Clerk.user;
       const username = user.username || (user.primaryEmailAddress ? user.primaryEmailAddress.emailAddress : 'User');
+      localStorage.setItem('ls_user', username); // Sync to localStorage so the game can read it
       elUserStatus.textContent = 'LINKED: ' + username.toUpperCase();
       
       elUserAvatar.style.display = 'none';
@@ -309,6 +310,50 @@
   
   // Set default body color
   document.body.style.background = 'hsl(8, 72%, 54%)';
+  
+  // Real-time Global High Scores Polling
+  const fetchGlobalScores = async () => {
+    try {
+      const res = await fetch('/api/scores');
+      if (!res.ok) throw new Error("Failed to load scores");
+      const scores = await res.json();
+      
+      // Update Mode Modal cards
+      const elGlobalEasy = document.getElementById('global-best-easy');
+      if (elGlobalEasy && scores.easy) {
+        elGlobalEasy.textContent = `${scores.easy.score} (${scores.easy.username})`;
+      }
+      const elGlobalHard = document.getElementById('global-best-hard');
+      if (elGlobalHard && scores.hard) {
+        elGlobalHard.textContent = `${scores.hard.score} (${scores.hard.username})`;
+      }
+      const elGlobalNightmare = document.getElementById('global-best-nightmare');
+      if (elGlobalNightmare && scores.nightmare) {
+        elGlobalNightmare.textContent = `${scores.nightmare.score} (${scores.nightmare.username})`;
+      }
+
+      // Update Sidebar overall global best
+      const elGlobalBestOverall = document.getElementById('global-best-score');
+      if (elGlobalBestOverall) {
+        const maxScore = Math.max(
+          scores.easy ? scores.easy.score : 0,
+          scores.hard ? scores.hard.score : 0,
+          scores.nightmare ? scores.nightmare.score : 0
+        );
+        let bestUser = '';
+        if (scores.easy && scores.easy.score === maxScore) bestUser = scores.easy.username;
+        else if (scores.hard && scores.hard.score === maxScore) bestUser = scores.hard.username;
+        else if (scores.nightmare && scores.nightmare.score === maxScore) bestUser = scores.nightmare.username;
+        
+        elGlobalBestOverall.textContent = maxScore > 0 ? `${maxScore} (${bestUser})` : '0';
+      }
+    } catch (e) {
+      console.warn("Failed to fetch global high scores:", e);
+    }
+  };
+
+  fetchGlobalScores();
+  setInterval(fetchGlobalScores, 5000); // Polling every 5 seconds for real-time updates
   
   updateUI();
   requestAnimationFrame(frame);

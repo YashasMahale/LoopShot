@@ -36,7 +36,8 @@
         <div id="clerk-user-button-container" style="display: none;"></div>
         <div class="user-info">
           <span class="user-status" id="user-status">GUEST ACCOUNT</span>
-          <span class="user-score">Best Score: <span id="best-score">0</span></span>
+          <span class="user-score">Personal Best: <span id="best-score">0</span></span>
+          <span class="user-score" style="font-size: 11px; opacity: 0.8; margin-top: 2px;">Global Best: <span id="global-best-score">0</span></span>
         </div>
       </div>
     </div>
@@ -203,30 +204,33 @@
             <span class="mode-title">Easy Mode</span>
             <span class="mode-desc">Slow speed, relaxed progression.</span>
           </div>
-          <div class="mode-badge">
-            BEST <span id="best-easy">0</span>
+          <div class="mode-badges">
+            <div class="mode-badge">BEST <span id="best-easy">0</span></div>
+            <div class="mode-badge global-badge" id="global-best-badge-easy">GLOBAL <span id="global-best-easy">0</span></div>
           </div>
         </button>
-
+ 
         <!-- Hard Mode -->
         <button class="mode-card hard" onclick="location.href='/play?mode=hard'">
           <div class="mode-info">
             <span class="mode-title">Hard Mode</span>
             <span class="mode-desc">Faster starts, standard pacing.</span>
           </div>
-          <div class="mode-badge">
-            BEST <span id="best-hard">0</span>
+          <div class="mode-badges">
+            <div class="mode-badge">BEST <span id="best-hard">0</span></div>
+            <div class="mode-badge global-badge" id="global-best-badge-hard">GLOBAL <span id="global-best-hard">0</span></div>
           </div>
         </button>
-
+ 
         <!-- Nightmare Mode -->
         <button class="mode-card nightmare" onclick="location.href='/play?mode=nightmare'">
           <div class="mode-info">
             <span class="mode-title">Nightmare Mode</span>
             <span class="mode-desc">Double speed, vanishing targets.</span>
           </div>
-          <div class="mode-badge">
-            BEST <span id="best-nightmare">0</span>
+          <div class="mode-badges">
+            <div class="mode-badge">BEST <span id="best-nightmare">0</span></div>
+            <div class="mode-badge global-badge" id="global-best-badge-nightmare">GLOBAL <span id="global-best-nightmare">0</span></div>
           </div>
         </button>
       </div>

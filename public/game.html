@@ -42,7 +42,10 @@
   <div class="screen hidden" id="over" style="display:none">
     <div class="stat-label">score</div>
     <div class="big-num" id="finalScore">0</div>
-    <div class="best-chip" id="bestChip">BEST 0</div>
+    <div style="display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 10px 0;">
+      <div class="best-chip" id="bestChip">BEST 0</div>
+      <div class="best-chip global-best-chip" id="globalBestChip" style="background: rgba(255, 209, 102, 0.12); border: 1px solid rgba(255, 209, 102, 0.4); color: #ffd166;">GLOBAL 0</div>
+    </div>
     <div class="close-call" id="closeCall" style="display:none">SO CLOSE — you were a hair off!</div>
     <div class="hint">tap anywhere to retry</div>
   </div>
