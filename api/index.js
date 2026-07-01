@@ -15,6 +15,9 @@ let globalScores = {
   nightmare: { score: 0, username: 'Guest' }
 };
 
+// Support multiple environment variable names injected by Vercel integrations
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGODB_URL || process.env.STORAGE_URL;
+
 // Check if MongoDB environment variable is present
 let mongoClient = null;
 let mongoDb = null;
@@ -24,11 +27,11 @@ async function connectToDatabase() {
   if (mongoClient && mongoDb) {
     return { client: mongoClient, db: mongoDb };
   }
-  if (!process.env.MONGODB_URI) {
-    throw new Error('MONGODB_URI environment variable is missing');
+  if (!MONGODB_URI) {
+    throw new Error('MongoDB environment variable is missing');
   }
   // Connect and reuse the connection
-  const client = await MongoClient.connect(process.env.MONGODB_URI);
+  const client = await MongoClient.connect(MONGODB_URI);
   const db = client.db('loopshot');
   mongoClient = client;
   mongoDb = db;
@@ -37,7 +40,7 @@ async function connectToDatabase() {
 
 // Helper to fetch global high scores
 async function getGlobalScores() {
-  if (process.env.MONGODB_URI) {
+  if (MONGODB_URI) {
     try {
       const { db } = await connectToDatabase();
       const collection = db.collection('scores');
@@ -75,7 +78,7 @@ async function updateGlobalScore(mode, score, username) {
       timestamp: Date.now()
     };
 
-    if (process.env.MONGODB_URI) {
+    if (MONGODB_URI) {
       try {
         const { db } = await connectToDatabase();
         const collection = db.collection('scores');
