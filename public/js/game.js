@@ -168,10 +168,15 @@
   async function submitScore(mode, score) {
     if (score <= 0) return;
     const username = localStorage.getItem('ls_user') || 'Guest';
+    const token = localStorage.getItem('ls_token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     try {
       const res = await fetch('/api/scores', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ mode, score, username })
       });
       if (res.ok) {

@@ -1,6 +1,21 @@
 const express = require('express');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const app = express();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'loopshot-default-super-secret-key-123456';
+
+function getOptionalUser(req) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return null;
+  }
+}
 
 // Parse JSON request bodies
 app.use(express.json());
@@ -122,12 +137,170 @@ app.get('/api/scores', async (req, res) => {
 // POST high score
 app.post('/api/scores', async (req, res) => {
   try {
-    const { mode, score, username } = req.body;
+    const { mode, score } = req.body;
+    let username = req.body.username || 'Guest';
+
     if (typeof score !== 'number') {
       return res.status(400).json({ error: 'Score must be a number' });
     }
+
+    // Optional authentication check
+    const authUser = getOptionalUser(req);
+    if (authUser) {
+      username = authUser.username;
+      
+      // Update user's personal best in users collection
+      if (MONGODB_URI) {
+        const { db } = await connectToDatabase();
+        const usersCol = db.collection('users');
+        const user = await usersCol.findOne({ _id: username });
+        if (user) {
+          const userBests = user.bestScores || { easy: 0, hard: 0, nightmare: 0 };
+          if (score > (userBests[mode] || 0)) {
+            userBests[mode] = score;
+            await usersCol.updateOne(
+              { _id: username },
+              { $set: { bestScores: userBests } }
+            );
+          }
+        }
+      } else {
+        if (!global.localUsers) global.localUsers = {};
+        if (global.localUsers[username]) {
+          const userBests = global.localUsers[username].bestScores || { easy: 0, hard: 0, nightmare: 0 };
+          if (score > (userBests[mode] || 0)) {
+            userBests[mode] = score;
+          }
+        }
+      }
+    }
+
     const result = await updateGlobalScore(mode, score, username);
     res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Custom Authentication Routes
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    const cleanUsername = username.trim().toLowerCase();
+    if (cleanUsername.length < 3 || cleanUsername.length > 15) {
+      return res.status(400).json({ error: 'Username must be between 3 and 15 characters' });
+    }
+    if (password.length < 4) {
+      return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    if (MONGODB_URI) {
+      const { db } = await connectToDatabase();
+      const collection = db.collection('users');
+      
+      const existingUser = await collection.findOne({ _id: cleanUsername });
+      if (existingUser) {
+        return res.status(400).json({ error: 'Username is already taken' });
+      }
+
+      const newUser = {
+        _id: cleanUsername,
+        passwordHash,
+        bestScores: { easy: 0, hard: 0, nightmare: 0 },
+        createdAt: new Date()
+      };
+      await collection.insertOne(newUser);
+      
+      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ token, username: cleanUsername, bestScores: newUser.bestScores });
+    } else {
+      if (!global.localUsers) global.localUsers = {};
+      if (global.localUsers[cleanUsername]) {
+        return res.status(400).json({ error: 'Username is already taken' });
+      }
+      global.localUsers[cleanUsername] = {
+        passwordHash,
+        bestScores: { easy: 0, hard: 0, nightmare: 0 }
+      };
+      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ token, username: cleanUsername, bestScores: { easy: 0, hard: 0, nightmare: 0 } });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    const cleanUsername = username.trim().toLowerCase();
+
+    if (MONGODB_URI) {
+      const { db } = await connectToDatabase();
+      const collection = db.collection('users');
+      const user = await collection.findOne({ _id: cleanUsername });
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid username or password' });
+      }
+
+      const isMatch = await bcrypt.compare(password, user.passwordHash);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Invalid username or password' });
+      }
+
+      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ token, username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 } });
+    } else {
+      if (!global.localUsers || !global.localUsers[cleanUsername]) {
+        return res.status(400).json({ error: 'Invalid username or password' });
+      }
+      const user = global.localUsers[cleanUsername];
+      const isMatch = await bcrypt.compare(password, user.passwordHash);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Invalid username or password' });
+      }
+      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ token, username: cleanUsername, bestScores: user.bestScores });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No token provided' });
+
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+      if (err) return res.status(401).json({ error: 'Invalid or expired token' });
+      
+      const cleanUsername = decoded.username;
+      if (MONGODB_URI) {
+        const { db } = await connectToDatabase();
+        const collection = db.collection('users');
+        const user = await collection.findOne({ _id: cleanUsername });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        
+        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 } });
+      } else {
+        if (!global.localUsers || !global.localUsers[cleanUsername]) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        const user = global.localUsers[cleanUsername];
+        return res.json({ username: cleanUsername, bestScores: user.bestScores });
+      }
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

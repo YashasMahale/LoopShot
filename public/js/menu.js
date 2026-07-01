@@ -70,71 +70,68 @@
   const volumeValue = document.getElementById('volume-value');
   const btnResetScore = document.getElementById('btn-reset-score');
 
-  // Account form
-  const formLink = document.getElementById('form-link-account');
-  const linkUsername = document.getElementById('link-username');
+  // Custom Auth DOM elements
+  const formLogin = document.getElementById('form-login');
+  const formRegister = document.getElementById('form-register');
+  const tabLogin = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
+  const loginUsernameInput = document.getElementById('login-username');
+  const loginPasswordInput = document.getElementById('login-password');
+  const registerUsernameInput = document.getElementById('register-username');
+  const registerPasswordInput = document.getElementById('register-password');
+  const loginError = document.getElementById('auth-error-login');
+  const registerError = document.getElementById('auth-error-register');
+  const btnLogout = document.getElementById('btn-logout');
 
-  // Clerk initialization state
-  let clerkActive = false;
+  // Auth Modal Tab switching
+  tabLogin.addEventListener('click', () => {
+    tabLogin.classList.add('active');
+    tabLogin.style.color = 'var(--paper)';
+    tabLogin.style.borderBottom = '2px solid var(--paper)';
+    tabRegister.classList.remove('active');
+    tabRegister.style.color = 'rgba(255,255,255,0.4)';
+    tabRegister.style.borderBottom = 'none';
+    formLogin.style.display = 'block';
+    formRegister.style.display = 'none';
+  });
 
-  window.initializeClerk = async () => {
-    try {
-      const Clerk = window.Clerk;
-      if (!Clerk) throw new Error("Clerk script not loaded");
+  tabRegister.addEventListener('click', () => {
+    tabRegister.classList.add('active');
+    tabRegister.style.color = 'var(--paper)';
+    tabRegister.style.borderBottom = '2px solid var(--paper)';
+    tabLogin.classList.remove('active');
+    tabLogin.style.color = 'rgba(255,255,255,0.4)';
+    tabLogin.style.borderBottom = 'none';
+    formRegister.style.display = 'block';
+    formLogin.style.display = 'none';
+  });
 
-      await Clerk.load();
-      clerkActive = true;
-      console.log("Clerk loaded successfully");
-
-      updateUI();
-
-      Clerk.addListener(({ user }) => {
-        updateUI();
-      });
-    } catch (e) {
-      console.warn("Clerk initialization failed, using local mock fallback:", e);
-      clerkActive = false;
-      updateUI();
-    }
-  };
-
-  // Update DOM from localStorage / Clerk
+  // Update DOM from localStorage & custom auth state
   const updateUI = () => {
     elBest.textContent = getBest();
     
-    if (clerkActive && window.Clerk && window.Clerk.user) {
-      const user = window.Clerk.user;
-      const username = user.username || (user.primaryEmailAddress ? user.primaryEmailAddress.emailAddress : 'User');
-      localStorage.setItem('ls_user', username); // Sync to localStorage so the game can read it
-      elUserStatus.textContent = 'LINKED: ' + username.toUpperCase();
-      
-      elUserAvatar.style.display = 'none';
-      if (clerkBtnContainer) {
-        clerkBtnContainer.style.display = 'block';
-        window.Clerk.mountUserButton(clerkBtnContainer);
-      }
-      
+    const username = getUser();
+    const token = localStorage.getItem('ls_token');
+    
+    if (token && username) {
+      elUserStatus.textContent = 'ACCOUNT: ' + username.toUpperCase();
+      elUserAvatar.textContent = username.slice(0, 2).toUpperCase();
+      elUserAvatar.style.background = '#ffd166';
+      elUserAvatar.style.color = '#16121f';
       btnLink.style.display = 'none';
+      btnLogout.style.display = 'flex';
     } else {
-      // Fallback/Local storage status
-      const username = getUser();
-      if (username) {
-        elUserStatus.textContent = 'LINKED: ' + username.toUpperCase();
-        elUserAvatar.textContent = username.slice(0, 2).toUpperCase();
-        elUserAvatar.style.background = '#ffd166';
-        elUserAvatar.style.color = '#16121f';
-      } else {
-        elUserStatus.textContent = 'GUEST ACCOUNT';
-        elUserAvatar.textContent = '?';
-        elUserAvatar.style.background = '';
-        elUserAvatar.style.color = '';
-      }
-      
-      elUserAvatar.style.display = 'flex';
-      if (clerkBtnContainer) {
-        clerkBtnContainer.style.display = 'none';
-      }
+      elUserStatus.textContent = 'GUEST ACCOUNT';
+      elUserAvatar.textContent = '?';
+      elUserAvatar.style.background = '';
+      elUserAvatar.style.color = '';
       btnLink.style.display = 'flex';
+      btnLogout.style.display = 'none';
+    }
+    
+    elUserAvatar.style.display = 'flex';
+    if (clerkBtnContainer) {
+      clerkBtnContainer.style.display = 'none';
     }
 
     // Settings
@@ -164,11 +161,8 @@
   btnStart.addEventListener('click', () => openModal(modalModeSelect));
 
   btnLink.addEventListener('click', () => {
-    if (clerkActive && window.Clerk) {
-      window.Clerk.openSignIn();
-    } else {
-      openModal(modalLink);
-    }
+    // Open custom Login/Register Modal
+    openModal(modalLink);
   });
 
   btnHowToPlay.addEventListener('click', () => openModal(modalHowToPlay));
@@ -214,25 +208,131 @@
     if (getBest() === 0) return;
     if (confirm('Are you sure you want to reset your personal best score?')) {
       localStorage.setItem('ls_best', '0');
+      // If logged in, let's keep database but clear local storage best
+      localStorage.setItem('ls_best_easy', '0');
+      localStorage.setItem('ls_best_hard', '0');
+      localStorage.setItem('ls_best_nightmare', '0');
       updateUI();
       playTone(160, 0.2, 'sawtooth', 0.12);
     }
   });
 
-  // Account: Form submission simulation
-  formLink.addEventListener('submit', (e) => {
+  // Login Form Submission
+  formLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const user = linkUsername.value.trim();
-    if (user) {
-      localStorage.setItem('ls_user', user);
-      updateUI();
+    loginError.style.display = 'none';
+    const username = loginUsernameInput.value.trim();
+    const password = loginPasswordInput.value;
+    
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid credentials');
+      
+      localStorage.setItem('ls_token', data.token);
+      localStorage.setItem('ls_user', data.username);
+      if (data.bestScores) {
+        localStorage.setItem('ls_best_easy', data.bestScores.easy || 0);
+        localStorage.setItem('ls_best_hard', data.bestScores.hard || 0);
+        localStorage.setItem('ls_best_nightmare', data.bestScores.nightmare || 0);
+        const maxScore = Math.max(data.bestScores.easy || 0, data.bestScores.hard || 0, data.bestScores.nightmare || 0);
+        localStorage.setItem('ls_best', maxScore);
+      }
+      
       closeModal(modalLink);
-      // Play a success sound
+      updateUI();
+      playTone(523, 0.06, 'square', 0.08);
+      playTone(659, 0.06, 'square', 0.08, 0.05);
+    } catch (err) {
+      loginError.textContent = err.message;
+      loginError.style.display = 'block';
+      playTone(160, 0.2, 'sawtooth', 0.1);
+    }
+  });
+
+  // Register Form Submission
+  formRegister.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    registerError.style.display = 'none';
+    const username = registerUsernameInput.value.trim();
+    const password = registerPasswordInput.value;
+    
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Registration failed');
+      
+      localStorage.setItem('ls_token', data.token);
+      localStorage.setItem('ls_user', data.username);
+      localStorage.setItem('ls_best_easy', '0');
+      localStorage.setItem('ls_best_hard', '0');
+      localStorage.setItem('ls_best_nightmare', '0');
+      localStorage.setItem('ls_best', '0');
+      
+      closeModal(modalLink);
+      updateUI();
       playTone(523, 0.06, 'square', 0.08);
       playTone(659, 0.06, 'square', 0.08, 0.05);
       playTone(784, 0.1, 'square', 0.08, 0.1);
+    } catch (err) {
+      registerError.textContent = err.message;
+      registerError.style.display = 'block';
+      playTone(160, 0.2, 'sawtooth', 0.1);
     }
   });
+
+  // Logout button trigger
+  btnLogout.addEventListener('click', () => {
+    if (confirm('Are you sure you want to log out?')) {
+      localStorage.removeItem('ls_token');
+      localStorage.removeItem('ls_user');
+      localStorage.setItem('ls_best_easy', '0');
+      localStorage.setItem('ls_best_hard', '0');
+      localStorage.setItem('ls_best_nightmare', '0');
+      localStorage.setItem('ls_best', '0');
+      updateUI();
+      playTone(330, 0.1, 'sawtooth', 0.08);
+    }
+  });
+
+  // Check token session on load
+  const checkSession = async () => {
+    const token = localStorage.getItem('ls_token');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('ls_user', data.username);
+        if (data.bestScores) {
+          localStorage.setItem('ls_best_easy', data.bestScores.easy || 0);
+          localStorage.setItem('ls_best_hard', data.bestScores.hard || 0);
+          localStorage.setItem('ls_best_nightmare', data.bestScores.nightmare || 0);
+          const maxScore = Math.max(data.bestScores.easy || 0, data.bestScores.hard || 0, data.bestScores.nightmare || 0);
+          localStorage.setItem('ls_best', maxScore);
+        }
+        updateUI();
+      } else {
+        // Clear invalid token
+        localStorage.removeItem('ls_token');
+        localStorage.removeItem('ls_user');
+        updateUI();
+      }
+    } catch (e) {
+      console.warn("Session check failed:", e);
+    }
+  };
+  checkSession();
 
   // Play click feedback
   btnStart.addEventListener('mousedown', () => {
