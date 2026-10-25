@@ -202,7 +202,13 @@
         }
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Checkout session failed');
+      if (!res.ok) {
+        if (res.status === 503) {
+          alert('💳 Creator Support Setup Required:\n\n' + data.error + '\n\nTo enable checkout:\n1. Open your Vercel Dashboard -> Project Settings -> Environment Variables\n2. Add name: STRIPE_SECRET_KEY (Value: your sk_test_... or sk_live_... key)\n3. Trigger a redeploy (or push to git) to apply the variable.');
+          return;
+        }
+        throw new Error(data.error || 'Checkout session failed');
+      }
       
       window.location.href = data.url;
     } catch (err) {

@@ -35,8 +35,34 @@ const { MongoClient } = require('mongodb');
 
 const app = express();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder');
 const JWT_SECRET = process.env.JWT_SECRET || 'loopshot-default-super-secret-key-123456';
+
+// Support multiple Stripe key environment variable names
+function getStripeKey() {
+  return (
+    process.env.STRIPE_SECRET_KEY ||
+    process.env.STRIPE_API_KEY ||
+    process.env.STRIPE_SECRET ||
+    process.env.STRIPE_KEY ||
+    process.env.STRIPE_PRIVATE_KEY ||
+    ''
+  ).trim();
+}
+
+function getStripeWebhookSecret() {
+  return (
+    process.env.STRIPE_WEBHOOK_SECRET ||
+    process.env.STRIPE_SIGNING_SECRET ||
+    process.env.STRIPE_ENDPOINT_SECRET ||
+    ''
+  ).trim();
+}
+
+function getStripeClient() {
+  const key = getStripeKey();
+  if (!key || key === 'sk_test_placeholder') return null;
+  return new Stripe(key);
+}
 
 function getOptionalUser(req) {
   const authHeader = req.headers['authorization'];
@@ -418,6 +444,36 @@ app.get('/api/auth/me', async (req, res) => {
   }
 });
 
+// Supporter Badge Test Helper (allows logged in players to toggle test supporter status)
+app.post('/api/auth/dev-supporter', async (req, res) => {
+  try {
+    const authUser = getOptionalUser(req);
+    if (!authUser) {
+      return res.status(401).json({ error: 'You must be logged in to test supporter status' });
+    }
+    const username = authUser.username;
+    if (isDatabaseConfigured()) {
+      const { db } = await connectToDatabase();
+      const collection = db.collection('users');
+      const user = await collection.findOne({ _id: username });
+      const newStatus = !(user && user.isSupporter);
+      await collection.updateOne(
+        { _id: username },
+        { $set: { isSupporter: newStatus } },
+        { upsert: true }
+      );
+      return res.json({ success: true, isSupporter: newStatus, username });
+    } else {
+      if (!global.localUsers) global.localUsers = {};
+      if (!global.localUsers[username]) global.localUsers[username] = { bestScores: {} };
+      global.localUsers[username].isSupporter = !global.localUsers[username].isSupporter;
+      return res.json({ success: true, isSupporter: global.localUsers[username].isSupporter, username });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Stripe Checkout Session for Support
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
@@ -426,8 +482,8 @@ app.post('/api/create-checkout-session', async (req, res) => {
       return res.status(401).json({ error: 'You must be logged in to support the creator' });
     }
 
-    const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeKey || stripeKey === 'sk_test_placeholder') {
+    const stripeClient = getStripeClient();
+    if (!stripeClient) {
       return res.status(503).json({
         error: 'Stripe payments are not configured yet. Please configure STRIPE_SECRET_KEY in Vercel settings.'
       });
@@ -435,7 +491,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
 
     const baseUrl = getBaseUrl(req);
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripeClient.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -468,12 +524,13 @@ app.post('/api/create-checkout-session', async (req, res) => {
 // Stripe Webhook
 app.post('/api/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const webhookSecret = getStripeWebhookSecret();
+  const stripeClient = getStripeClient();
   let event;
 
   try {
-    if (webhookSecret && sig) {
-      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    if (webhookSecret && sig && stripeClient) {
+      event = stripeClient.webhooks.constructEvent(req.body, sig, webhookSecret);
     } else {
       event = Buffer.isBuffer(req.body)
         ? JSON.parse(req.body.toString('utf8'))
@@ -547,8 +604,8 @@ const handleHealthCheck = async (req, res) => {
     hasStorageUrl: Boolean(process.env.STORAGE_URL),
     hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
     hasCustomMongoDb: Boolean(process.env.MONGODB_DATABASE),
-    hasStripeKey: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'sk_test_placeholder'),
-    hasStripeWebhookSecret: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+    hasStripeKey: Boolean(getStripeKey()),
+    hasStripeWebhookSecret: Boolean(getStripeWebhookSecret()),
     hasJwtSecret: Boolean(process.env.JWT_SECRET)
   };
 
