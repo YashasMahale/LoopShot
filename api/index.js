@@ -492,7 +492,6 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const baseUrl = getBaseUrl(req);
 
     const session = await stripeClient.checkout.sessions.create({
-      payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
