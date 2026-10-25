@@ -280,6 +280,77 @@
     </div>
   </div>
 
+  <!-- Support Creator Modal -->
+  <div class="modal hidden" id="modal-support-creator">
+    <div class="modal-content support-modal-content">
+      <button class="btn-close-modal" data-modal="modal-support-creator">&times;</button>
+      <div class="support-header">
+        <div class="support-badge-icon">💖</div>
+        <h3>Support Creator</h3>
+        <p class="modal-desc">Fuel LoopShot's development and unlock your exclusive golden <strong>SUPPORTER</strong> badge & profile glow!</p>
+      </div>
+
+      <div class="support-section-label">CHOOSE YOUR CONTRIBUTION</div>
+      <div class="support-presets">
+        <button type="button" class="preset-btn active" data-amount="2.99">
+          <span class="preset-icon">☕</span>
+          <span class="preset-price">$2.99</span>
+          <span class="preset-name">Coffee</span>
+        </button>
+        <button type="button" class="preset-btn popular" data-amount="5.99">
+          <span class="preset-popular-tag">POPULAR</span>
+          <span class="preset-icon">🍕</span>
+          <span class="preset-price">$5.99</span>
+          <span class="preset-name">Pizza</span>
+        </button>
+        <button type="button" class="preset-btn" data-amount="9.99">
+          <span class="preset-icon">⭐</span>
+          <span class="preset-price">$9.99</span>
+          <span class="preset-name">Super Fan</span>
+        </button>
+      </div>
+
+      <div class="custom-amount-wrapper">
+        <label for="custom-support-amount">OR ENTER ANY CUSTOM AMOUNT ($ USD)</label>
+        <div class="custom-amount-input-box">
+          <span class="currency-symbol">$</span>
+          <input type="number" id="custom-support-amount" min="1.00" max="1000.00" step="0.01" value="2.99" placeholder="2.99" />
+        </div>
+      </div>
+
+      <div class="support-perks-box">
+        <div class="perk-item">
+          <span class="perk-check">✓</span>
+          <span>Golden <strong>SUPPORTER</strong> title & avatar badge</span>
+        </div>
+        <div class="perk-item">
+          <span class="perk-check">✓</span>
+          <span>Permanent supporter recognition across high scores</span>
+        </div>
+        <div class="perk-item">
+          <span class="perk-check">✓</span>
+          <span>Directly keeps game servers running & updates coming</span>
+        </div>
+      </div>
+
+      <button id="btn-proceed-checkout" class="btn-primary support-checkout-btn">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+          <line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        <span id="checkout-btn-text">PAY $2.99 WITH STRIPE</span>
+      </button>
+
+      <div class="stripe-secure-note">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>Encrypted & secure via Stripe Checkout</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Custom Authentication Client Scripts loaded via menu.js -->
 
   <script src="/js/menu.js"></script>

@@ -474,7 +474,7 @@ app.post('/api/auth/dev-supporter', async (req, res) => {
   }
 });
 
-// Stripe Checkout Session for Support
+// Stripe Checkout Session for Support (Dynamic amount: default $2.99, suggested $2.99, $5.99, $9.99 or custom)
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
     const authUser = getOptionalUser(req);
@@ -489,6 +489,29 @@ app.post('/api/create-checkout-session', async (req, res) => {
       });
     }
 
+    // Determine amount in cents (default $2.99 = 299 cents)
+    let amountInCents = 299;
+    if (req.body && req.body.amount !== undefined) {
+      const parsed = parseFloat(req.body.amount);
+      if (isNaN(parsed) || parsed < 1.0) {
+        return res.status(400).json({ error: 'Minimum support amount is $1.00 USD' });
+      }
+      if (parsed > 1000.0) {
+        return res.status(400).json({ error: 'Maximum support amount is $1,000.00 USD' });
+      }
+      amountInCents = Math.round(parsed * 100);
+    } else if (req.body && req.body.amountInCents !== undefined) {
+      const parsed = parseInt(req.body.amountInCents, 10);
+      if (isNaN(parsed) || parsed < 100) {
+        return res.status(400).json({ error: 'Minimum support amount is $1.00 USD' });
+      }
+      if (parsed > 100000) {
+        return res.status(400).json({ error: 'Maximum support amount is $1,000.00 USD' });
+      }
+      amountInCents = parsed;
+    }
+
+    const formattedAmount = (amountInCents / 100).toFixed(2);
     const baseUrl = getBaseUrl(req);
 
     const session = await stripeClient.checkout.sessions.create({
@@ -498,22 +521,23 @@ app.post('/api/create-checkout-session', async (req, res) => {
             currency: 'usd',
             product_data: {
               name: 'Support LoopShot Creator',
-              description: 'A small donation to support the development of LoopShot.',
+              description: `A donation of $${formattedAmount} USD to support the development of LoopShot.`,
             },
-            unit_amount: 299, // $2.99
+            unit_amount: amountInCents,
           },
           quantity: 1,
         },
       ],
       mode: 'payment',
-      success_url: `${baseUrl}/?payment=success`,
+      success_url: `${baseUrl}/?payment=success&amt=${formattedAmount}`,
       cancel_url: `${baseUrl}/?payment=cancelled`,
       metadata: {
         userId: authUser.username,
+        amountInCents: amountInCents.toString(),
       },
     });
 
-    res.json({ url: session.url });
+    res.json({ url: session.url, amount: formattedAmount });
   } catch (e) {
     console.error('Stripe Checkout Error:', e);
     res.status(500).json({ error: e.message });

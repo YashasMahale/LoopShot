@@ -184,38 +184,110 @@
   btnSettings.addEventListener('click', () => openModal(modalSettings));
   btnCredits.addEventListener('click', () => openModal(modalCredits));
 
-  // Support Creator trigger
-  btnSupport.addEventListener('click', async () => {
+  // Support Creator Modal Setup & Controls
+  const modalSupport = document.getElementById('modal-support-creator');
+  const presetButtons = document.querySelectorAll('.preset-btn');
+  const customAmountInput = document.getElementById('custom-support-amount');
+  const checkoutBtnText = document.getElementById('checkout-btn-text');
+  const btnProceedCheckout = document.getElementById('btn-proceed-checkout');
+
+  // Open Support Creator modal
+  btnSupport.addEventListener('click', () => {
     const token = localStorage.getItem('ls_token');
     if (!token) {
-      alert('Please log in first to support the creator!');
+      alert('Please log in first to support the creator and unlock your supporter badge!');
       openModal(modalLink);
       return;
     }
+    openModal(modalSupport);
+  });
 
-    try {
-      const res = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+  // Preset buttons click handler ($2.99, $5.99, $9.99)
+  presetButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      presetButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const amt = btn.getAttribute('data-amount');
+      if (customAmountInput) customAmountInput.value = amt;
+      if (checkoutBtnText) checkoutBtnText.textContent = `PAY $${parseFloat(amt).toFixed(2)} WITH STRIPE`;
+    });
+  });
+
+  // Custom amount input event handler
+  if (customAmountInput) {
+    customAmountInput.addEventListener('input', () => {
+      const val = parseFloat(customAmountInput.value);
+      // Sync active state on preset buttons
+      presetButtons.forEach(b => {
+        if (parseFloat(b.getAttribute('data-amount')) === val) {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
         }
       });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 503) {
-          alert('💳 Creator Support Setup Required:\n\n' + data.error + '\n\nTo enable checkout:\n1. Open your Vercel Dashboard -> Project Settings -> Environment Variables\n2. Add name: STRIPE_SECRET_KEY (Value: your sk_test_... or sk_live_... key)\n3. Trigger a redeploy (or push to git) to apply the variable.');
-          return;
+      if (checkoutBtnText) {
+        if (!isNaN(val) && val > 0) {
+          checkoutBtnText.textContent = `PAY $${val.toFixed(2)} WITH STRIPE`;
+        } else {
+          checkoutBtnText.textContent = 'ENTER AN AMOUNT';
         }
-        throw new Error(data.error || 'Checkout session failed');
       }
-      
-      window.location.href = data.url;
-    } catch (err) {
-      alert('Error: ' + err.message);
-      playTone(160, 0.2, 'sawtooth', 0.1);
-    }
-  });
+    });
+  }
+
+  // Proceed to Stripe Checkout trigger
+  if (btnProceedCheckout) {
+    btnProceedCheckout.addEventListener('click', async () => {
+      const token = localStorage.getItem('ls_token');
+      if (!token) {
+        alert('Please log in first to support the creator!');
+        closeModal(modalSupport);
+        openModal(modalLink);
+        return;
+      }
+
+      const amountVal = customAmountInput ? parseFloat(customAmountInput.value) : 2.99;
+      if (isNaN(amountVal) || amountVal < 1.0) {
+        alert('Please enter a contribution amount of at least $1.00 USD.');
+        return;
+      }
+      if (amountVal > 1000.0) {
+        alert('Maximum contribution amount is $1,000.00 USD.');
+        return;
+      }
+
+      btnProceedCheckout.disabled = true;
+      if (checkoutBtnText) checkoutBtnText.textContent = 'CONNECTING TO STRIPE...';
+
+      try {
+        const res = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ amount: amountVal })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 503) {
+            alert('💳 Creator Support Setup Required:\n\n' + data.error + '\n\nTo enable checkout:\n1. Open your Vercel Dashboard -> Project Settings -> Environment Variables\n2. Add name: STRIPE_SECRET_KEY (Value: your sk_test_... or sk_live_... key)\n3. Trigger a redeploy (or push to git) to apply the variable.');
+            btnProceedCheckout.disabled = false;
+            if (checkoutBtnText) checkoutBtnText.textContent = `PAY $${amountVal.toFixed(2)} WITH STRIPE`;
+            return;
+          }
+          throw new Error(data.error || 'Checkout session failed');
+        }
+        
+        window.location.href = data.url;
+      } catch (err) {
+        alert('Error: ' + err.message);
+        playTone(160, 0.2, 'sawtooth', 0.1);
+        btnProceedCheckout.disabled = false;
+        if (checkoutBtnText) checkoutBtnText.textContent = `PAY $${amountVal.toFixed(2)} WITH STRIPE`;
+      }
+    });
+  }
 
   // Event listener for all close buttons
   document.querySelectorAll('.btn-close-modal').forEach(btn => {
@@ -503,7 +575,11 @@
   // Handle Stripe Payment redirect return
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('payment') === 'success') {
-    alert('🎉 Thank you so much for supporting LoopShot! Your supporter badge is now active.');
+    const paidAmount = urlParams.get('amt');
+    const msg = paidAmount 
+      ? `🎉 Thank you so much for your generous $${paidAmount} contribution to LoopShot! Your golden SUPPORTER badge is now active.`
+      : '🎉 Thank you so much for supporting LoopShot! Your golden SUPPORTER badge is now active.';
+    alert(msg);
     window.history.replaceState({}, document.title, window.location.pathname);
   } else if (urlParams.get('payment') === 'cancelled') {
     alert('Payment was cancelled. You can support anytime! Thanks for playing LoopShot.');
