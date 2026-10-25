@@ -260,52 +260,175 @@ app.get('/api/scores', async (req, res) => {
   }
 });
 
-// POST high score
+// GET /api/leaderboard - Top 10 players for each of the 3 modes separately
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const modes = ['easy', 'hard', 'nightmare'];
+    const leaderboard = {
+      easy: [],
+      hard: [],
+      nightmare: []
+    };
+
+    if (isDatabaseConfigured()) {
+      try {
+        const { db } = await connectToDatabase();
+        const usersCol = db.collection('users');
+
+        for (const mode of modes) {
+          const query = {};
+          query[`bestScores.${mode}`] = { $gt: 0 };
+
+          const sortObj = {};
+          sortObj[`bestScores.${mode}`] = -1;
+
+          const topUsers = await usersCol
+            .find(query, { projection: { _id: 1, bestScores: 1, isSupporter: 1 } })
+            .sort(sortObj)
+            .limit(10)
+            .toArray();
+
+          leaderboard[mode] = topUsers.map((u, idx) => ({
+            rank: idx + 1,
+            username: u._id,
+            score: (u.bestScores && u.bestScores[mode]) || 0,
+            isSupporter: Boolean(u.isSupporter)
+          }));
+        }
+
+        return res.json(leaderboard);
+      } catch (dbErr) {
+        console.error('Failed to query leaderboard from MongoDB:', dbErr.message);
+      }
+    }
+
+    // In-memory fallback
+    if (global.localUsers) {
+      for (const mode of modes) {
+        const userList = Object.keys(global.localUsers)
+          .map(uname => ({
+            username: uname,
+            score: (global.localUsers[uname].bestScores && global.localUsers[uname].bestScores[mode]) || 0,
+            isSupporter: Boolean(global.localUsers[uname].isSupporter)
+          }))
+          .filter(u => u.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 10)
+          .map((u, idx) => ({ rank: idx + 1, ...u }));
+
+        leaderboard[mode] = userList;
+      }
+    }
+
+    res.json(leaderboard);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reset all high scores in database like the game is new
+app.post('/api/admin/reset-scores', async (req, res) => {
+  try {
+    let dbReset = false;
+    let usersResetCount = 0;
+
+    if (isDatabaseConfigured()) {
+      const { db } = await connectToDatabase();
+
+      // Reset scores collection
+      await db.collection('scores').deleteMany({});
+      const defaultRecords = [
+        { _id: 'easy', score: 0, username: 'None', timestamp: Date.now() },
+        { _id: 'hard', score: 0, username: 'None', timestamp: Date.now() },
+        { _id: 'nightmare', score: 0, username: 'None', timestamp: Date.now() }
+      ];
+      await db.collection('scores').insertMany(defaultRecords);
+
+      // Reset all users' personal best scores
+      const result = await db.collection('users').updateMany(
+        {},
+        { $set: { bestScores: { easy: 0, hard: 0, nightmare: 0 } } }
+      );
+      usersResetCount = result.modifiedCount;
+      dbReset = true;
+    }
+
+    // Reset local in-memory fallback scores
+    globalScores = {
+      easy: { score: 0, username: 'Guest' },
+      hard: { score: 0, username: 'Guest' },
+      nightmare: { score: 0, username: 'Guest' }
+    };
+    if (global.localUsers) {
+      Object.keys(global.localUsers).forEach(uname => {
+        global.localUsers[uname].bestScores = { easy: 0, hard: 0, nightmare: 0 };
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'All scores have been reset to 0 like a brand new game.',
+      dbReset,
+      usersResetCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('Reset scores error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST high score - REQUIRES AUTHENTICATION (Scores are only saved when logged in)
 app.post('/api/scores', async (req, res) => {
   try {
     const { mode, score } = req.body;
-    let username = req.body.username || 'Guest';
 
     if (typeof score !== 'number') {
       return res.status(400).json({ error: 'Score must be a number' });
     }
 
-    // Optional authentication check
+    // Only logged in players can save high scores
     const authUser = getOptionalUser(req);
-    if (authUser) {
-      username = authUser.username;
-      
-      // Update user's personal best in users collection
-      if (isDatabaseConfigured()) {
-        try {
-          const { db } = await connectToDatabase();
-          const usersCol = db.collection('users');
-          const user = await usersCol.findOne({ _id: username });
-          if (user) {
-            const userBests = user.bestScores || { easy: 0, hard: 0, nightmare: 0 };
-            if (score > (userBests[mode] || 0)) {
-              userBests[mode] = score;
-              await usersCol.updateOne(
-                { _id: username },
-                { $set: { bestScores: userBests } }
-              );
-            }
+    if (!authUser) {
+      return res.status(401).json({ 
+        error: 'High scores can only be saved when logged in. Please log in or register to record your score.',
+        requiresLogin: true
+      });
+    }
+
+    const username = authUser.username;
+    const cleanMode = ['easy', 'hard', 'nightmare'].includes(mode) ? mode : 'easy';
+
+    // Update user's personal best in users collection
+    if (isDatabaseConfigured()) {
+      try {
+        const { db } = await connectToDatabase();
+        const usersCol = db.collection('users');
+        const user = await usersCol.findOne({ _id: username });
+        if (user) {
+          const userBests = user.bestScores || { easy: 0, hard: 0, nightmare: 0 };
+          if (score > (userBests[cleanMode] || 0)) {
+            userBests[cleanMode] = score;
+            await usersCol.updateOne(
+              { _id: username },
+              { $set: { bestScores: userBests } }
+            );
           }
-        } catch (dbErr) {
-          console.error('Failed to update personal best in MongoDB:', dbErr.message);
         }
-      } else {
-        if (!global.localUsers) global.localUsers = {};
-        if (global.localUsers[username]) {
-          const userBests = global.localUsers[username].bestScores || { easy: 0, hard: 0, nightmare: 0 };
-          if (score > (userBests[mode] || 0)) {
-            userBests[mode] = score;
-          }
+      } catch (dbErr) {
+        console.error('Failed to update personal best in MongoDB:', dbErr.message);
+      }
+    } else {
+      if (!global.localUsers) global.localUsers = {};
+      if (global.localUsers[username]) {
+        const userBests = global.localUsers[username].bestScores || { easy: 0, hard: 0, nightmare: 0 };
+        if (score > (userBests[cleanMode] || 0)) {
+          userBests[cleanMode] = score;
         }
       }
     }
 
-    const result = await updateGlobalScore(mode, score, username);
+    const result = await updateGlobalScore(cleanMode, score, username);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });

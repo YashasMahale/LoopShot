@@ -74,6 +74,20 @@
         LOG OUT
       </button>
 
+      <!-- Leaderboard -->
+      <button class="menu-btn" id="btn-leaderboard" style="background: rgba(0, 240, 255, 0.12); border-color: rgba(0, 240, 255, 0.35); color: #00f0ff;">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+          <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+          <path d="M4 22h16" />
+          <path d="M10 14.66V17c0 .55-.45 1-1 1H7" />
+          <path d="M14 14.66V17c0 .55.45 1 1 1h2" />
+          <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+        </svg>
+        LEADERBOARD
+      </button>
+
       <!-- How to Play -->
       <button class="menu-btn" id="btn-how-to-play">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
@@ -347,6 +361,38 @@
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
         <span>Encrypted & secure via Stripe Checkout</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard Modal -->
+  <div class="modal hidden" id="modal-leaderboard">
+    <div class="modal-content leaderboard-modal-content">
+      <button class="btn-close-modal" data-modal="modal-leaderboard">&times;</button>
+      <div class="leaderboard-header">
+        <div class="leaderboard-icon">🏆</div>
+        <h3>Hall of Fame</h3>
+        <p class="modal-desc">Top 10 players across all 3 game modes. Only registered accounts earn their place here.</p>
+      </div>
+
+      <!-- Mode Tabs -->
+      <div class="leaderboard-tabs">
+        <button type="button" class="lb-tab active" data-mode="easy">
+          <span class="lb-tab-dot dot-easy"></span> EASY
+        </button>
+        <button type="button" class="lb-tab" data-mode="hard">
+          <span class="lb-tab-dot dot-hard"></span> HARD
+        </button>
+        <button type="button" class="lb-tab" data-mode="nightmare">
+          <span class="lb-tab-dot dot-nightmare"></span> NIGHTMARE
+        </button>
+      </div>
+
+      <!-- Leaderboard List Container -->
+      <div class="leaderboard-list-wrapper">
+        <div class="leaderboard-list" id="leaderboard-list">
+          <div class="leaderboard-loading">Loading top rankings...</div>
+        </div>
       </div>
     </div>
   </div>

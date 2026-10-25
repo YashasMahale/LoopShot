@@ -175,11 +175,10 @@
   function updateGlobalHUD(bestObj) {
     if (!bestObj) return;
     globalBestScore = bestObj.score;
-    globalBestUser = bestObj.username;
     
     const elGlobalBest = $('globalBestChip');
     if (elGlobalBest) {
-      elGlobalBest.textContent = `GLOBAL ${globalBestScore} (${globalBestUser})`;
+      elGlobalBest.textContent = `GLOBAL ${globalBestScore}`;
       if (score > globalBestScore) {
         elGlobalBest.style.background = '#ffd166';
         elGlobalBest.style.color = '#16121f';
@@ -192,12 +191,15 @@
 
   async function submitScore(mode, score) {
     if (score <= 0) return;
-    const username = localStorage.getItem('ls_user') || 'Guest';
     const token = localStorage.getItem('ls_token');
-    const headers = { 'Content-Type': 'application/json' };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    // Scores are strictly saved only when logged in
+    if (!token) return;
+
+    const username = localStorage.getItem('ls_user') || 'Player';
+    const headers = { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
     try {
       const res = await fetch('/api/scores', {
         method: 'POST',
@@ -247,6 +249,12 @@
     sfx.start();
     trailHistory.length = 0;
 
+    // Hide guest warning card on start
+    const elGuestCard = $('guestScoreCard');
+    if (elGuestCard) elGuestCard.style.display = 'none';
+    const elRetryHint = $('retryHint');
+    if (elRetryHint) elRetryHint.style.display = 'block';
+
     // Update game mode HUD badge style and text
     const elModeBadge = document.getElementById('game-mode-badge');
     if (elModeBadge) {
@@ -266,6 +274,7 @@
     burst(CX + Math.cos(angle) * R, CY + Math.sin(angle) * R, '#16121f', 26, 1.4);
     trailHistory.length = 0;
 
+    const token = localStorage.getItem('ls_token');
     const isNewBest = score > best;
     if (isNewBest) { best = score; saveBest(best); }
 
@@ -274,14 +283,25 @@
     elBest.classList.toggle('new', isNewBest);
     elClose.style.display = (nearMiss && !isNewBest) ? 'block' : 'none';
 
+    // Guest score warning display
+    const elGuestCard = $('guestScoreCard');
+    const elRetryHint = $('retryHint');
+    if (!token && score > 0) {
+      if (elGuestCard) elGuestCard.style.display = 'block';
+      if (elRetryHint) elRetryHint.style.display = 'none';
+    } else {
+      if (elGuestCard) elGuestCard.style.display = 'none';
+      if (elRetryHint) elRetryHint.style.display = 'block';
+    }
+
     elScore.style.display = 'none';
     elCombo.classList.remove('on');
     elOver.style.display = 'flex';
     requestAnimationFrame(() => elOver.classList.remove('hidden'));
     inputLock = performance.now() + 450;
 
-    // Submit score to global database if they made a hit, or fetch the latest global best as a fallback
-    if (score > 0) {
+    // Submit score to global database only if user is logged in
+    if (score > 0 && token) {
       submitScore(mode, score);
     } else {
       fetchGlobalBest();
@@ -298,7 +318,17 @@
     const now = performance.now();
     if (now < inputLock) return;
 
-    if (state === S.OVER) { startGame(); return; }
+    if (state === S.OVER) {
+      const elGuestCard = $('guestScoreCard');
+      if (elGuestCard && elGuestCard.style.display === 'block') {
+        elGuestCard.style.display = 'none';
+        const elRetryHint = $('retryHint');
+        if (elRetryHint) elRetryHint.style.display = 'block';
+        return;
+      }
+      startGame();
+      return;
+    }
 
     // playing: judge the tap
     const d = angDist(angle, zoneCenter);
@@ -460,6 +490,29 @@
 
     cx.restore();
     requestAnimationFrame(frame);
+  }
+
+  // Guest score warning button handlers
+  const btnGuestLogin = $('btnGuestLogin');
+  if (btnGuestLogin) {
+    btnGuestLogin.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (score > 0) {
+        localStorage.setItem('ls_pending_score', JSON.stringify({ mode, score }));
+      }
+      location.href = '/?auth=login';
+    });
+  }
+
+  const btnGuestDismiss = $('btnGuestDismiss');
+  if (btnGuestDismiss) {
+    btnGuestDismiss.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const elGuestCard = $('guestScoreCard');
+      const elRetryHint = $('retryHint');
+      if (elGuestCard) elGuestCard.style.display = 'none';
+      if (elRetryHint) elRetryHint.style.display = 'block';
+    });
   }
 
   // Start the game loop automatically when loaded

@@ -184,6 +184,97 @@
   btnSettings.addEventListener('click', () => openModal(modalSettings));
   btnCredits.addEventListener('click', () => openModal(modalCredits));
 
+  // Leaderboard Modal Setup & Controls
+  const btnLeaderboard = document.getElementById('btn-leaderboard');
+  const modalLeaderboard = document.getElementById('modal-leaderboard');
+  const lbTabs = document.querySelectorAll('.lb-tab');
+  const lbList = document.getElementById('leaderboard-list');
+
+  let activeLeaderboardMode = 'easy';
+  let cachedLeaderboardData = null;
+
+  async function fetchLeaderboardData() {
+    if (!lbList) return;
+    lbList.innerHTML = '<div class="leaderboard-loading">Loading top rankings...</div>';
+
+    try {
+      const res = await fetch('/api/leaderboard');
+      if (res.ok) {
+        cachedLeaderboardData = await res.json();
+        renderLeaderboard(activeLeaderboardMode);
+      } else {
+        lbList.innerHTML = '<div class="leaderboard-empty">Unable to load rankings.</div>';
+      }
+    } catch (e) {
+      lbList.innerHTML = '<div class="leaderboard-empty">Failed to load rankings.</div>';
+    }
+  }
+
+  function renderLeaderboard(mode) {
+    if (!lbList) return;
+    if (!cachedLeaderboardData || !cachedLeaderboardData[mode] || cachedLeaderboardData[mode].length === 0) {
+      lbList.innerHTML = `
+        <div class="leaderboard-empty">
+          <div class="empty-icon">🎮</div>
+          <div class="empty-title">No Scores Recorded</div>
+          <div class="empty-desc">Be the first logged-in player to set a score in ${mode.toUpperCase()} mode!</div>
+        </div>
+      `;
+      return;
+    }
+
+    const items = cachedLeaderboardData[mode];
+    let html = '';
+    items.forEach(item => {
+      let medal = '';
+      let rankClass = `rank-${item.rank}`;
+      if (item.rank === 1) medal = '🥇';
+      else if (item.rank === 2) medal = '🥈';
+      else if (item.rank === 3) medal = '🥉';
+      else medal = `#${item.rank}`;
+
+      const isSupporter = item.isSupporter;
+      const supporterTag = isSupporter ? '<span class="lb-supporter-tag">SUPPORTER</span>' : '';
+      const avatarBg = isSupporter ? 'background: #ffd700; color: #16121f;' : 'background: rgba(255,255,255,0.12); color: #fff;';
+
+      html += `
+        <div class="lb-row ${rankClass}">
+          <div class="lb-rank">${medal}</div>
+          <div class="lb-player">
+            <div class="lb-avatar" style="${avatarBg}">${item.username.slice(0, 2).toUpperCase()}</div>
+            <div class="lb-name-group">
+              <span class="lb-username">${item.username.toUpperCase()}</span>
+              ${supporterTag}
+            </div>
+          </div>
+          <div class="lb-score">${item.score}</div>
+        </div>
+      `;
+    });
+
+    lbList.innerHTML = html;
+  }
+
+  if (btnLeaderboard) {
+    btnLeaderboard.addEventListener('click', () => {
+      openModal(modalLeaderboard);
+      fetchLeaderboardData();
+    });
+  }
+
+  lbTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      lbTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeLeaderboardMode = tab.getAttribute('data-mode') || 'easy';
+      if (cachedLeaderboardData) {
+        renderLeaderboard(activeLeaderboardMode);
+      } else {
+        fetchLeaderboardData();
+      }
+    });
+  });
+
   // Support Creator Modal Setup & Controls
   const modalSupport = document.getElementById('modal-support-creator');
   const presetButtons = document.querySelectorAll('.preset-btn');
@@ -337,6 +428,33 @@
     }
   });
 
+  // Helper to submit pending score after login if one exists
+  async function checkAndSubmitPendingScore(token) {
+    const pendingRaw = localStorage.getItem('ls_pending_score');
+    if (!pendingRaw || !token) return;
+    try {
+      const pending = JSON.parse(pendingRaw);
+      if (pending && pending.score > 0) {
+        const res = await fetch('/api/scores', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ mode: pending.mode, score: pending.score })
+        });
+        if (res.ok) {
+          localStorage.removeItem('ls_pending_score');
+          alert(`🎉 Great news! Your score of ${pending.score} (${pending.mode.toUpperCase()} mode) has been saved to your account!`);
+          updateUI();
+          fetchGlobalScores();
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to sync pending score:", e);
+    }
+  }
+
   // Login Form Submission
   formLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -367,6 +485,9 @@
       updateUI();
       playTone(523, 0.06, 'square', 0.08);
       playTone(659, 0.06, 'square', 0.08, 0.05);
+
+      // Check if there was a score waiting to be saved from guest play
+      await checkAndSubmitPendingScore(data.token);
     } catch (err) {
       loginError.textContent = err.message;
       loginError.style.display = 'block';
@@ -402,6 +523,9 @@
       playTone(523, 0.06, 'square', 0.08);
       playTone(659, 0.06, 'square', 0.08, 0.05);
       playTone(784, 0.1, 'square', 0.08, 0.1);
+
+      // Check if there was a score waiting to be saved from guest play
+      await checkAndSubmitPendingScore(data.token);
     } catch (err) {
       registerError.textContent = err.message;
       registerError.style.display = 'block';
@@ -531,7 +655,7 @@
   // Set default body color
   document.body.style.background = 'hsl(8, 72%, 54%)';
   
-  // Real-time Global High Scores Polling
+  // Real-time Global High Scores Polling (Numeric score only, no usernames in brackets)
   const fetchGlobalScores = async () => {
     try {
       const res = await fetch('/api/scores');
@@ -541,15 +665,15 @@
       // Update Mode Modal cards
       const elGlobalEasy = document.getElementById('global-best-easy');
       if (elGlobalEasy && scores.easy) {
-        elGlobalEasy.textContent = `${scores.easy.score} (${scores.easy.username})`;
+        elGlobalEasy.textContent = `${scores.easy.score || 0}`;
       }
       const elGlobalHard = document.getElementById('global-best-hard');
       if (elGlobalHard && scores.hard) {
-        elGlobalHard.textContent = `${scores.hard.score} (${scores.hard.username})`;
+        elGlobalHard.textContent = `${scores.hard.score || 0}`;
       }
       const elGlobalNightmare = document.getElementById('global-best-nightmare');
       if (elGlobalNightmare && scores.nightmare) {
-        elGlobalNightmare.textContent = `${scores.nightmare.score} (${scores.nightmare.username})`;
+        elGlobalNightmare.textContent = `${scores.nightmare.score || 0}`;
       }
 
       // Update Sidebar overall global best
@@ -560,20 +684,21 @@
           scores.hard ? scores.hard.score : 0,
           scores.nightmare ? scores.nightmare.score : 0
         );
-        let bestUser = '';
-        if (scores.easy && scores.easy.score === maxScore) bestUser = scores.easy.username;
-        else if (scores.hard && scores.hard.score === maxScore) bestUser = scores.hard.username;
-        else if (scores.nightmare && scores.nightmare.score === maxScore) bestUser = scores.nightmare.username;
-        
-        elGlobalBestOverall.textContent = maxScore > 0 ? `${maxScore} (${bestUser})` : '0';
+        elGlobalBestOverall.textContent = maxScore > 0 ? `${maxScore}` : '0';
       }
     } catch (e) {
       console.warn("Failed to fetch global high scores:", e);
     }
   };
 
-  // Handle Stripe Payment redirect return
+  // Handle URL query parameters (Stripe payment return & Game login redirect)
   const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('auth') === 'login' || urlParams.get('login') === 'true') {
+    openModal(modalLink);
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  // Handle Stripe Payment redirect return
   if (urlParams.get('payment') === 'success') {
     const paidAmount = urlParams.get('amt');
     const msg = paidAmount 

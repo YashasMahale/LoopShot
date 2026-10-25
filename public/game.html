@@ -47,7 +47,21 @@
       <div class="best-chip global-best-chip" id="globalBestChip" style="background: rgba(255, 209, 102, 0.12); border: 1px solid rgba(255, 209, 102, 0.4); color: #ffd166;">GLOBAL 0</div>
     </div>
     <div class="close-call" id="closeCall" style="display:none">SO CLOSE — you were a hair off!</div>
-    <div class="hint">tap anywhere to retry</div>
+    
+    <!-- Guest Score Warning Card -->
+    <div class="guest-score-card" id="guestScoreCard" style="display:none;">
+      <div class="guest-card-header">
+        <span class="guest-card-icon">⚠️</span>
+        <span class="guest-card-title">SCORE NOT SAVED</span>
+      </div>
+      <p class="guest-card-desc">You are playing as a <strong>Guest</strong>. Log in to save your score to your account and the leaderboard!</p>
+      <div class="guest-card-actions">
+        <button type="button" class="btn-guest-login" id="btnGuestLogin">LOG IN TO SAVE</button>
+        <button type="button" class="btn-guest-dismiss" id="btnGuestDismiss">CANCEL</button>
+      </div>
+    </div>
+
+    <div class="hint" id="retryHint">tap anywhere to retry</div>
   </div>
 
   <div id="flash"></div>
