@@ -1,12 +1,41 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Stripe = require('stripe');
+const { MongoClient } = require('mongodb');
+
+// Automatically load local .env / .env.local if present (for local testing)
+['.env.local', '.env'].forEach(file => {
+  const envPath = path.join(__dirname, '..', file);
+  if (fs.existsSync(envPath)) {
+    try {
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx !== -1) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          let val = trimmed.slice(eqIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (!process.env[key]) {
+            process.env[key] = val;
+          }
+        }
+      });
+    } catch (e) {
+      // Ignore env read issues locally
+    }
+  }
+});
+
 const app = express();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder');
-
 const JWT_SECRET = process.env.JWT_SECRET || 'loopshot-default-super-secret-key-123456';
 
 function getOptionalUser(req) {
@@ -20,10 +49,22 @@ function getOptionalUser(req) {
   }
 }
 
-// Use raw body for Stripe Webhooks, and JSON for others
+function getBaseUrl(req) {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/\/$/, '')}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.replace(/\/$/, '')}`;
+  if (req && req.headers && req.headers.host) {
+    const proto = req.headers['x-forwarded-proto'] || 'http';
+    return `${proto}://${req.headers.host}`;
+  }
+  return 'http://localhost:3000';
+}
+
+// Middleware: Use raw body for Stripe Webhooks, JSON for other routes
 app.use((req, res, next) => {
-  if (req.url === '/api/webhook') {
-    next();
+  if (req.originalUrl === '/api/webhook' || req.url === '/api/webhook') {
+    express.raw({ type: 'application/json' })(req, res, next);
   } else {
     express.json()(req, res, next);
   }
@@ -39,32 +80,81 @@ let globalScores = {
   nightmare: { score: 0, username: 'Guest' }
 };
 
-// Support multiple environment variable names injected by Vercel integrations
-const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGODB_URL || process.env.STORAGE_URL;
+// Support multiple environment variable names injected by Vercel integrations / marketplaces
+function getMongoUri() {
+  return (
+    process.env.MONGODB_URI ||
+    process.env.MONGODB_URL ||
+    process.env.STORAGE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.MONGO_URL ||
+    process.env.MONGODB_CONNECTION_STRING ||
+    ''
+  ).trim();
+}
 
-// Check if MongoDB environment variable is present
-let mongoClient = null;
-let mongoDb = null;
-const { MongoClient } = require('mongodb');
+function isDatabaseConfigured() {
+  return Boolean(getMongoUri());
+}
+
+// Check database name configuration
+function resolveDatabaseName(client) {
+  if (process.env.MONGODB_DATABASE) {
+    return process.env.MONGODB_DATABASE.trim();
+  }
+  try {
+    const defaultDb = client.db();
+    if (defaultDb.databaseName && defaultDb.databaseName !== 'test') {
+      return defaultDb.databaseName;
+    }
+  } catch (e) {
+    // fallback
+  }
+  return 'loopshot';
+}
+
+// Serverless-optimized MongoDB connection caching
+let cachedClient = null;
+let cachedDb = null;
+let clientPromise = null;
 
 async function connectToDatabase() {
-  if (mongoClient && mongoDb) {
-    return { client: mongoClient, db: mongoDb };
+  const uri = getMongoUri();
+  if (!uri) {
+    throw new Error('MongoDB connection string is missing');
   }
-  if (!MONGODB_URI) {
-    throw new Error('MongoDB environment variable is missing');
+
+  if (cachedClient && cachedDb) {
+    return { client: cachedClient, db: cachedDb };
   }
-  // Connect and reuse the connection
-  const client = await MongoClient.connect(MONGODB_URI);
-  const db = client.db('loopshot');
-  mongoClient = client;
-  mongoDb = db;
-  return { client, db };
+
+  if (!clientPromise) {
+    const client = new MongoClient(uri, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000
+    });
+
+    clientPromise = client.connect().then(connectedClient => {
+      const dbName = resolveDatabaseName(connectedClient);
+      const db = connectedClient.db(dbName);
+      cachedClient = connectedClient;
+      cachedDb = db;
+      return { client: connectedClient, db };
+    }).catch(err => {
+      clientPromise = null; // Clear so subsequent requests can retry
+      cachedClient = null;
+      cachedDb = null;
+      throw err;
+    });
+  }
+
+  return clientPromise;
 }
 
 // Helper to fetch global high scores
 async function getGlobalScores() {
-  if (MONGODB_URI) {
+  if (isDatabaseConfigured()) {
     try {
       const { db } = await connectToDatabase();
       const collection = db.collection('scores');
@@ -81,7 +171,7 @@ async function getGlobalScores() {
       });
       return scores;
     } catch (e) {
-      console.error('Failed to get scores from MongoDB:', e);
+      console.error('Failed to get scores from MongoDB, using local fallback:', e.message);
     }
   }
   return globalScores;
@@ -102,7 +192,10 @@ async function updateGlobalScore(mode, score, username) {
       timestamp: Date.now()
     };
 
-    if (MONGODB_URI) {
+    // Keep in-memory cache updated
+    globalScores[cleanMode] = updatedRecord;
+
+    if (isDatabaseConfigured()) {
       try {
         const { db } = await connectToDatabase();
         const collection = db.collection('scores');
@@ -112,10 +205,8 @@ async function updateGlobalScore(mode, score, username) {
           { upsert: true }
         );
       } catch (e) {
-        console.error('Failed to save score to MongoDB:', e);
+        console.error('Failed to save score to MongoDB:', e.message);
       }
-    } else {
-      globalScores[cleanMode] = updatedRecord;
     }
     return { updated: true, globalBest: updatedRecord };
   }
@@ -159,19 +250,23 @@ app.post('/api/scores', async (req, res) => {
       username = authUser.username;
       
       // Update user's personal best in users collection
-      if (MONGODB_URI) {
-        const { db } = await connectToDatabase();
-        const usersCol = db.collection('users');
-        const user = await usersCol.findOne({ _id: username });
-        if (user) {
-          const userBests = user.bestScores || { easy: 0, hard: 0, nightmare: 0 };
-          if (score > (userBests[mode] || 0)) {
-            userBests[mode] = score;
-            await usersCol.updateOne(
-              { _id: username },
-              { $set: { bestScores: userBests } }
-            );
+      if (isDatabaseConfigured()) {
+        try {
+          const { db } = await connectToDatabase();
+          const usersCol = db.collection('users');
+          const user = await usersCol.findOne({ _id: username });
+          if (user) {
+            const userBests = user.bestScores || { easy: 0, hard: 0, nightmare: 0 };
+            if (score > (userBests[mode] || 0)) {
+              userBests[mode] = score;
+              await usersCol.updateOne(
+                { _id: username },
+                { $set: { bestScores: userBests } }
+              );
+            }
           }
+        } catch (dbErr) {
+          console.error('Failed to update personal best in MongoDB:', dbErr.message);
         }
       } else {
         if (!global.localUsers) global.localUsers = {};
@@ -209,7 +304,7 @@ app.post('/api/auth/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    if (MONGODB_URI) {
+    if (isDatabaseConfigured()) {
       const { db } = await connectToDatabase();
       const collection = db.collection('users');
       
@@ -243,6 +338,7 @@ app.post('/api/auth/register', async (req, res) => {
       return res.json({ token, username: cleanUsername, bestScores: { easy: 0, hard: 0, nightmare: 0 } });
     }
   } catch (e) {
+    console.error('Registration error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -255,7 +351,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const cleanUsername = username.trim().toLowerCase();
 
-    if (MONGODB_URI) {
+    if (isDatabaseConfigured()) {
       const { db } = await connectToDatabase();
       const collection = db.collection('users');
       const user = await collection.findOne({ _id: cleanUsername });
@@ -283,6 +379,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.json({ token, username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
     }
   } catch (e) {
+    console.error('Login error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -297,13 +394,17 @@ app.get('/api/auth/me', async (req, res) => {
       if (err) return res.status(401).json({ error: 'Invalid or expired token' });
       
       const cleanUsername = decoded.username;
-      if (MONGODB_URI) {
-        const { db } = await connectToDatabase();
-        const collection = db.collection('users');
-        const user = await collection.findOne({ _id: cleanUsername });
-        if (!user) return res.status(404).json({ error: 'User not found' });
-        
-        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
+      if (isDatabaseConfigured()) {
+        try {
+          const { db } = await connectToDatabase();
+          const collection = db.collection('users');
+          const user = await collection.findOne({ _id: cleanUsername });
+          if (!user) return res.status(404).json({ error: 'User not found' });
+          
+          return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
+        } catch (dbErr) {
+          return res.status(500).json({ error: dbErr.message });
+        }
       } else {
         if (!global.localUsers || !global.localUsers[cleanUsername]) {
           return res.status(404).json({ error: 'User not found' });
@@ -325,6 +426,15 @@ app.post('/api/create-checkout-session', async (req, res) => {
       return res.status(401).json({ error: 'You must be logged in to support the creator' });
     }
 
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || stripeKey === 'sk_test_placeholder') {
+      return res.status(503).json({
+        error: 'Stripe payments are not configured yet. Please configure STRIPE_SECRET_KEY in Vercel settings.'
+      });
+    }
+
+    const baseUrl = getBaseUrl(req);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -333,17 +443,16 @@ app.post('/api/create-checkout-session', async (req, res) => {
             currency: 'usd',
             product_data: {
               name: 'Support LoopShot Creator',
-              description: 'A small donation to support the development of this game.',
+              description: 'A small donation to support the development of LoopShot.',
             },
-            unit_amount: 299, // $2.99 - "Buy me a coffee" amount
+            unit_amount: 299, // $2.99
           },
           quantity: 1,
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.VERCEL_URL || 'http://localhost:3000'}/?payment=success`,
-      cancel_url: `${process.env.VERCEL_URL || 'http://localhost:3000'}/?payment=cancelled`,
-      customer_email: authUser.username + '@example.com',
+      success_url: `${baseUrl}/?payment=success`,
+      cancel_url: `${baseUrl}/?payment=cancelled`,
       metadata: {
         userId: authUser.username,
       },
@@ -351,6 +460,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
 
     res.json({ url: session.url });
   } catch (e) {
+    console.error('Stripe Checkout Error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -358,35 +468,101 @@ app.post('/api/create-checkout-session', async (req, res) => {
 // Stripe Webhook
 app.post('/api/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   let event;
 
   try {
-    event = req.body; 
+    if (webhookSecret && sig) {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } else {
+      event = Buffer.isBuffer(req.body)
+        ? JSON.parse(req.body.toString('utf8'))
+        : (typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
+    }
   } catch (err) {
+    console.error(`Webhook error: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const userId = session.metadata.userId;
+  if (event && event.type === 'checkout.session.completed') {
+    const session = event.data && event.data.object;
+    const userId = session && session.metadata && session.metadata.userId;
 
-    if (userId && MONGODB_URI) {
-      const { db } = await connectToDatabase();
-      const collection = db.collection('users');
-      await collection.updateOne(
-        { _id: userId },
-        { $set: { isSupporter: true } }
-      );
+    if (userId) {
+      if (isDatabaseConfigured()) {
+        try {
+          const { db } = await connectToDatabase();
+          const collection = db.collection('users');
+          await collection.updateOne(
+            { _id: userId },
+            { $set: { isSupporter: true } }
+          );
+        } catch (dbErr) {
+          console.error('Failed to update supporter in MongoDB:', dbErr.message);
+        }
+      } else {
+        if (global.localUsers && global.localUsers[userId]) {
+          global.localUsers[userId].isSupporter = true;
+        }
+      }
     }
   }
 
   res.json({ received: true });
 });
 
-// Status check API
-app.get('/api/status', (req, res) => {
-  res.json({ status: 'ok', game: 'LoopShot', timestamp: new Date() });
-});
+// Comprehensive Status and Health Check API
+const handleHealthCheck = async (req, res) => {
+  const uri = getMongoUri();
+  const configured = Boolean(uri);
+
+  let dbStatus = {
+    configured,
+    connected: false,
+    mode: configured ? 'mongodb' : 'in-memory-fallback',
+    databaseName: null,
+    latencyMs: null,
+    error: null
+  };
+
+  if (configured) {
+    const start = Date.now();
+    try {
+      const { db } = await connectToDatabase();
+      const ping = await db.command({ ping: 1 });
+      const latencyMs = Date.now() - start;
+      dbStatus.connected = Boolean(ping && (ping.ok === 1 || ping.ok === true));
+      dbStatus.databaseName = db.databaseName;
+      dbStatus.latencyMs = latencyMs;
+    } catch (err) {
+      dbStatus.connected = false;
+      dbStatus.error = err.message;
+    }
+  }
+
+  // Safe environment audit (booleans only - no secret exposure)
+  const envStatus = {
+    hasMongoUri: Boolean(process.env.MONGODB_URI),
+    hasMongoUrl: Boolean(process.env.MONGODB_URL),
+    hasStorageUrl: Boolean(process.env.STORAGE_URL),
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+    hasCustomMongoDb: Boolean(process.env.MONGODB_DATABASE),
+    hasStripeKey: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'sk_test_placeholder'),
+    hasStripeWebhookSecret: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+    hasJwtSecret: Boolean(process.env.JWT_SECRET)
+  };
+
+  res.json({
+    status: (dbStatus.connected || !configured) ? 'ok' : 'database_error',
+    game: 'LoopShot',
+    timestamp: new Date().toISOString(),
+    database: dbStatus,
+    environment: envStatus
+  });
+};
+
+app.get('/api/status', handleHealthCheck);
+app.get('/api/health', handleHealthCheck);
 
 // Export the app for Vercel serverless function execution
 module.exports = app;

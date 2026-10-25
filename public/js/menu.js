@@ -494,6 +494,16 @@
     }
   };
 
+  // Handle Stripe Payment redirect return
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('payment') === 'success') {
+    alert('🎉 Thank you so much for supporting LoopShot! Your supporter badge is now active.');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else if (urlParams.get('payment') === 'cancelled') {
+    alert('Payment was cancelled. You can support anytime! Thanks for playing LoopShot.');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
   fetchGlobalScores();
   setInterval(fetchGlobalScores, 5000); // Polling every 5 seconds for real-time updates
   
