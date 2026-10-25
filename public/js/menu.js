@@ -64,6 +64,7 @@
   const btnHowToPlay = document.getElementById('btn-how-to-play');
   const btnSettings = document.getElementById('btn-settings-toggle');
   const btnCredits = document.getElementById('btn-credits');
+  const btnSupport = document.getElementById('btn-support-creator');
 
   // Settings Modal controls
   const volumeSlider = document.getElementById('volume-slider');
@@ -107,16 +108,30 @@
   });
 
   // Update DOM from localStorage & custom auth state
-  const updateUI = () => {
+  const updateUI = async () => {
     elBest.textContent = getBest();
     
     const username = getUser();
     const token = localStorage.getItem('ls_token');
     
     if (token && username) {
-      elUserStatus.textContent = 'ACCOUNT: ' + username.toUpperCase();
+      // Check for supporter status
+      let isSupporter = false;
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          isSupporter = data.isSupporter;
+        }
+      } catch (e) {
+        console.warn("Failed to fetch user status:", e);
+      }
+
+      elUserStatus.textContent = (isSupporter ? 'SUPPORTER: ' : 'ACCOUNT: ') + username.toUpperCase();
       elUserAvatar.textContent = username.slice(0, 2).toUpperCase();
-      elUserAvatar.style.background = '#ffd166';
+      elUserAvatar.style.background = isSupporter ? '#ffd700' : '#ffd166';
       elUserAvatar.style.color = '#16121f';
       btnLink.style.display = 'none';
       btnLogout.style.display = 'flex';
@@ -168,6 +183,33 @@
   btnHowToPlay.addEventListener('click', () => openModal(modalHowToPlay));
   btnSettings.addEventListener('click', () => openModal(modalSettings));
   btnCredits.addEventListener('click', () => openModal(modalCredits));
+
+  // Support Creator trigger
+  btnSupport.addEventListener('click', async () => {
+    const token = localStorage.getItem('ls_token');
+    if (!token) {
+      alert('Please log in first to support the creator!');
+      openModal(modalLink);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Checkout session failed');
+      
+      window.location.href = data.url;
+    } catch (err) {
+      alert('Error: ' + err.message);
+      playTone(160, 0.2, 'sawtooth', 0.1);
+    }
+  });
 
   // Event listener for all close buttons
   document.querySelectorAll('.btn-close-modal').forEach(btn => {

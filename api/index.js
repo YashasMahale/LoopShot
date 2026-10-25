@@ -2,7 +2,10 @@ const express = require('express');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const Stripe = require('stripe');
 const app = express();
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'loopshot-default-super-secret-key-123456';
 
@@ -17,8 +20,14 @@ function getOptionalUser(req) {
   }
 }
 
-// Parse JSON request bodies
-app.use(express.json());
+// Use raw body for Stripe Webhooks, and JSON for others
+app.use((req, res, next) => {
+  if (req.url === '/api/webhook') {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 
 // Serve static files from the public folder
 app.use(express.static(path.join(__dirname, '../public')));
@@ -213,6 +222,7 @@ app.post('/api/auth/register', async (req, res) => {
         _id: cleanUsername,
         passwordHash,
         bestScores: { easy: 0, hard: 0, nightmare: 0 },
+        isSupporter: false,
         createdAt: new Date()
       };
       await collection.insertOne(newUser);
@@ -226,7 +236,8 @@ app.post('/api/auth/register', async (req, res) => {
       }
       global.localUsers[cleanUsername] = {
         passwordHash,
-        bestScores: { easy: 0, hard: 0, nightmare: 0 }
+        bestScores: { easy: 0, hard: 0, nightmare: 0 },
+        isSupporter: false
       };
       const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
       return res.json({ token, username: cleanUsername, bestScores: { easy: 0, hard: 0, nightmare: 0 } });
@@ -258,7 +269,7 @@ app.post('/api/auth/login', async (req, res) => {
       }
 
       const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 } });
+      return res.json({ token, username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
     } else {
       if (!global.localUsers || !global.localUsers[cleanUsername]) {
         return res.status(400).json({ error: 'Invalid username or password' });
@@ -269,7 +280,7 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(400).json({ error: 'Invalid username or password' });
       }
       const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, username: cleanUsername, bestScores: user.bestScores });
+      return res.json({ token, username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
     }
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -292,18 +303,84 @@ app.get('/api/auth/me', async (req, res) => {
         const user = await collection.findOne({ _id: cleanUsername });
         if (!user) return res.status(404).json({ error: 'User not found' });
         
-        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 } });
+        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
       } else {
         if (!global.localUsers || !global.localUsers[cleanUsername]) {
           return res.status(404).json({ error: 'User not found' });
         }
         const user = global.localUsers[cleanUsername];
-        return res.json({ username: cleanUsername, bestScores: user.bestScores });
+        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
       }
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Stripe Checkout Session for Support
+app.post('/api/create-checkout-session', async (req, res) => {
+  try {
+    const authUser = getOptionalUser(req);
+    if (!authUser) {
+      return res.status(401).json({ error: 'You must be logged in to support the creator' });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Support LoopShot Creator',
+              description: 'A small donation to support the development of this game.',
+            },
+            unit_amount: 299, // $2.99 - "Buy me a coffee" amount
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${process.env.VERCEL_URL || 'http://localhost:3000'}/?payment=success`,
+      cancel_url: `${process.env.VERCEL_URL || 'http://localhost:3000'}/?payment=cancelled`,
+      customer_email: authUser.username + '@example.com',
+      metadata: {
+        userId: authUser.username,
+      },
+    });
+
+    res.json({ url: session.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Stripe Webhook
+app.post('/api/webhook', async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = req.body; 
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.metadata.userId;
+
+    if (userId && MONGODB_URI) {
+      const { db } = await connectToDatabase();
+      const collection = db.collection('users');
+      await collection.updateOne(
+        { _id: userId },
+        { $set: { isSupporter: true } }
+      );
+    }
+  }
+
+  res.json({ received: true });
 });
 
 // Status check API
