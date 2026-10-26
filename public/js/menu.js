@@ -300,7 +300,7 @@
       btn.classList.add('active');
       const amt = btn.getAttribute('data-amount');
       if (customAmountInput) customAmountInput.value = amt;
-      if (checkoutBtnText) checkoutBtnText.textContent = `PAY $${parseFloat(amt).toFixed(2)} WITH STRIPE`;
+      if (checkoutBtnText) checkoutBtnText.textContent = `SUPPORT $${parseFloat(amt).toFixed(2)}`;
     });
   });
 
@@ -318,7 +318,7 @@
       });
       if (checkoutBtnText) {
         if (!isNaN(val) && val > 0) {
-          checkoutBtnText.textContent = `PAY $${val.toFixed(2)} WITH STRIPE`;
+          checkoutBtnText.textContent = `SUPPORT $${val.toFixed(2)}`;
         } else {
           checkoutBtnText.textContent = 'ENTER AN AMOUNT';
         }
@@ -326,7 +326,7 @@
     });
   }
 
-  // Proceed to Stripe Checkout trigger
+  // Proceed to Checkout trigger (Lemon Squeezy / Stripe)
   if (btnProceedCheckout) {
     btnProceedCheckout.addEventListener('click', async () => {
       const token = localStorage.getItem('ls_token');
@@ -348,7 +348,7 @@
       }
 
       btnProceedCheckout.disabled = true;
-      if (checkoutBtnText) checkoutBtnText.textContent = 'CONNECTING TO STRIPE...';
+      if (checkoutBtnText) checkoutBtnText.textContent = 'CONNECTING TO CHECKOUT...';
 
       try {
         const res = await fetch('/api/create-checkout-session', {
@@ -362,9 +362,9 @@
         const data = await res.json();
         if (!res.ok) {
           if (res.status === 503) {
-            alert('💳 Creator Support Setup Required:\n\n' + data.error + '\n\nTo enable checkout:\n1. Open your Vercel Dashboard -> Project Settings -> Environment Variables\n2. Add name: STRIPE_SECRET_KEY (Value: your sk_test_... or sk_live_... key)\n3. Trigger a redeploy (or push to git) to apply the variable.');
+            alert('🍋 Creator Support Setup Required:\n\n' + data.error + '\n\nTo enable checkout:\n1. Open your Vercel Dashboard -> Project Settings -> Environment Variables\n2. Add the following Lemon Squeezy keys:\n   • LEMONSQUEEZY_API_KEY\n   • LEMONSQUEEZY_STORE_ID\n   • LEMONSQUEEZY_VARIANT_ID\n   • LEMONSQUEEZY_WEBHOOK_SECRET\n3. Trigger a redeploy (or push to git) to apply the variables.');
             btnProceedCheckout.disabled = false;
-            if (checkoutBtnText) checkoutBtnText.textContent = `PAY $${amountVal.toFixed(2)} WITH STRIPE`;
+            if (checkoutBtnText) checkoutBtnText.textContent = `SUPPORT $${amountVal.toFixed(2)}`;
             return;
           }
           throw new Error(data.error || 'Checkout session failed');
@@ -375,7 +375,7 @@
         alert('Error: ' + err.message);
         playTone(160, 0.2, 'sawtooth', 0.1);
         btnProceedCheckout.disabled = false;
-        if (checkoutBtnText) checkoutBtnText.textContent = `PAY $${amountVal.toFixed(2)} WITH STRIPE`;
+        if (checkoutBtnText) checkoutBtnText.textContent = `SUPPORT $${amountVal.toFixed(2)}`;
       }
     });
   }

@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Stripe = require('stripe');
 const { MongoClient } = require('mongodb');
+const crypto = require('crypto');
 
 // Automatically load local .env / .env.local if present (for local testing)
 ['.env.local', '.env'].forEach(file => {
@@ -64,6 +65,48 @@ function getStripeClient() {
   return new Stripe(key);
 }
 
+// Lemon Squeezy configuration helpers
+function getLemonSqueezyApiKey() {
+  return (
+    process.env.LEMONSQUEEZY_API_KEY ||
+    process.env.LEMON_SQUEEZY_API_KEY ||
+    process.env.LEMONSQUEEZY_KEY ||
+    process.env.LEMON_API_KEY ||
+    ''
+  ).trim();
+}
+
+function getLemonSqueezyStoreId() {
+  return (
+    process.env.LEMONSQUEEZY_STORE_ID ||
+    process.env.LEMON_SQUEEZY_STORE_ID ||
+    process.env.LEMON_STORE_ID ||
+    ''
+  ).trim();
+}
+
+function getLemonSqueezyVariantId() {
+  return (
+    process.env.LEMONSQUEEZY_VARIANT_ID ||
+    process.env.LEMON_SQUEEZY_VARIANT_ID ||
+    process.env.LEMON_VARIANT_ID ||
+    ''
+  ).trim();
+}
+
+function getLemonSqueezyWebhookSecret() {
+  return (
+    process.env.LEMONSQUEEZY_WEBHOOK_SECRET ||
+    process.env.LEMON_SQUEEZY_WEBHOOK_SECRET ||
+    process.env.LEMON_WEBHOOK_SECRET ||
+    ''
+  ).trim();
+}
+
+function isLemonSqueezyConfigured() {
+  return Boolean(getLemonSqueezyApiKey() && getLemonSqueezyStoreId() && getLemonSqueezyVariantId());
+}
+
 function getOptionalUser(req) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -87,10 +130,16 @@ function getBaseUrl(req) {
   return 'http://localhost:3000';
 }
 
-// Middleware: Use raw body for Stripe Webhooks, JSON for other routes
+// Middleware: Use raw body for Stripe & Lemon Squeezy Webhooks, JSON for other routes
 app.use((req, res, next) => {
-  if (req.originalUrl === '/api/webhook' || req.url === '/api/webhook') {
-    express.raw({ type: 'application/json' })(req, res, next);
+  const url = req.originalUrl || req.url;
+  if (
+    url === '/api/webhook' ||
+    url === '/api/lemonsqueezy/webhook' ||
+    url.startsWith('/api/webhook') ||
+    url.startsWith('/api/lemonsqueezy/webhook')
+  ) {
+    express.raw({ type: '*/*' })(req, res, next);
   } else {
     express.json()(req, res, next);
   }
@@ -597,19 +646,12 @@ app.post('/api/auth/dev-supporter', async (req, res) => {
   }
 });
 
-// Stripe Checkout Session for Support (Dynamic amount: default $2.99, suggested $2.99, $5.99, $9.99 or custom)
+// Creator Support Checkout Session (Lemon Squeezy as primary with Stripe fallback)
 app.post('/api/create-checkout-session', async (req, res) => {
   try {
     const authUser = getOptionalUser(req);
     if (!authUser) {
       return res.status(401).json({ error: 'You must be logged in to support the creator' });
-    }
-
-    const stripeClient = getStripeClient();
-    if (!stripeClient) {
-      return res.status(503).json({
-        error: 'Stripe payments are not configured yet. Please configure STRIPE_SECRET_KEY in Vercel settings.'
-      });
     }
 
     // Determine amount in cents (default $2.99 = 299 cents)
@@ -637,82 +679,235 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const formattedAmount = (amountInCents / 100).toFixed(2);
     const baseUrl = getBaseUrl(req);
 
-    const session = await stripeClient.checkout.sessions.create({
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: 'Support LoopShot Creator',
-              description: `A donation of $${formattedAmount} USD to support the development of LoopShot.`,
-            },
-            unit_amount: amountInCents,
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'payment',
-      success_url: `${baseUrl}/?payment=success&amt=${formattedAmount}`,
-      cancel_url: `${baseUrl}/?payment=cancelled`,
-      metadata: {
-        userId: authUser.username,
-        amountInCents: amountInCents.toString(),
-      },
-    });
+    // 1. Check Lemon Squeezy first (preferred provider)
+    if (isLemonSqueezyConfigured()) {
+      const apiKey = getLemonSqueezyApiKey();
+      const storeId = getLemonSqueezyStoreId();
+      const variantId = getLemonSqueezyVariantId();
 
-    res.json({ url: session.url, amount: formattedAmount });
+      const lsPayload = {
+        data: {
+          type: 'checkouts',
+          attributes: {
+            custom_price: amountInCents,
+            product_options: {
+              name: 'Support LoopShot Creator',
+              description: `A donation of $${formattedAmount} USD to support LoopShot game development.`,
+              redirect_url: `${baseUrl}/?payment=success&amt=${formattedAmount}`
+            },
+            checkout_data: {
+              custom: {
+                user_id: authUser.username
+              }
+            }
+          },
+          relationships: {
+            store: {
+              data: {
+                type: 'stores',
+                id: storeId.toString()
+              }
+            },
+            variant: {
+              data: {
+                type: 'variants',
+                id: variantId.toString()
+              }
+            }
+          }
+        }
+      };
+
+      const lsResponse = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.api+json',
+          'Content-Type': 'application/vnd.api+json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(lsPayload)
+      });
+
+      const lsData = await lsResponse.json();
+
+      if (!lsResponse.ok) {
+        console.error('Lemon Squeezy API Error:', lsData);
+        const errMsg = (lsData.errors && lsData.errors[0] && lsData.errors[0].detail) ||
+                       lsData.message ||
+                       'Failed to generate Lemon Squeezy checkout';
+        return res.status(lsResponse.status).json({ error: errMsg });
+      }
+
+      const checkoutUrl = lsData.data && lsData.data.attributes && lsData.data.attributes.url;
+      if (!checkoutUrl) {
+        return res.status(500).json({ error: 'No checkout URL returned from Lemon Squeezy' });
+      }
+
+      return res.json({ url: checkoutUrl, amount: formattedAmount, provider: 'lemonsqueezy' });
+    }
+
+    // 2. Stripe Fallback if configured
+    const stripeClient = getStripeClient();
+    if (stripeClient) {
+      const session = await stripeClient.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'Support LoopShot Creator',
+                description: `A donation of $${formattedAmount} USD to support the development of LoopShot.`,
+              },
+              unit_amount: amountInCents,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${baseUrl}/?payment=success&amt=${formattedAmount}`,
+        cancel_url: `${baseUrl}/?payment=cancelled`,
+        metadata: {
+          userId: authUser.username,
+          amountInCents: amountInCents.toString(),
+        },
+      });
+
+      return res.json({ url: session.url, amount: formattedAmount, provider: 'stripe' });
+    }
+
+    // 3. Neither configured
+    return res.status(503).json({
+      error: 'Lemon Squeezy payments are not configured yet. Please configure LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_STORE_ID, and LEMONSQUEEZY_VARIANT_ID in Vercel settings.',
+      provider: 'none'
+    });
   } catch (e) {
-    console.error('Stripe Checkout Error:', e);
+    console.error('Checkout Session Error:', e);
     res.status(500).json({ error: e.message });
   }
 });
 
-// Stripe Webhook
-app.post('/api/webhook', async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  const webhookSecret = getStripeWebhookSecret();
-  const stripeClient = getStripeClient();
-  let event;
+// Unified Webhook Handler (supports both Lemon Squeezy and Stripe)
+const handleUnifiedWebhook = async (req, res) => {
+  const lemonSignature = req.headers['x-signature'];
+  const stripeSignature = req.headers['stripe-signature'];
 
-  try {
-    if (webhookSecret && sig && stripeClient) {
-      event = stripeClient.webhooks.constructEvent(req.body, sig, webhookSecret);
+  // Helper to mark supporter in DB
+  const grantSupporter = async (userId) => {
+    if (!userId) return;
+    if (isDatabaseConfigured()) {
+      try {
+        const { db } = await connectToDatabase();
+        await db.collection('users').updateOne(
+          { _id: userId },
+          { $set: { isSupporter: true } }
+        );
+      } catch (dbErr) {
+        console.error('Failed to update supporter in MongoDB:', dbErr.message);
+      }
     } else {
-      event = Buffer.isBuffer(req.body)
-        ? JSON.parse(req.body.toString('utf8'))
-        : (typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
-    }
-  } catch (err) {
-    console.error(`Webhook error: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  if (event && event.type === 'checkout.session.completed') {
-    const session = event.data && event.data.object;
-    const userId = session && session.metadata && session.metadata.userId;
-
-    if (userId) {
-      if (isDatabaseConfigured()) {
-        try {
-          const { db } = await connectToDatabase();
-          const collection = db.collection('users');
-          await collection.updateOne(
-            { _id: userId },
-            { $set: { isSupporter: true } }
-          );
-        } catch (dbErr) {
-          console.error('Failed to update supporter in MongoDB:', dbErr.message);
-        }
-      } else {
-        if (global.localUsers && global.localUsers[userId]) {
-          global.localUsers[userId].isSupporter = true;
-        }
+      if (global.localUsers && global.localUsers[userId]) {
+        global.localUsers[userId].isSupporter = true;
       }
     }
+  };
+
+  // Case 1: Lemon Squeezy Webhook
+  if (lemonSignature) {
+    const rawBodyBuffer = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body), 'utf8');
+
+    const lemonSecret = getLemonSqueezyWebhookSecret();
+    if (lemonSecret) {
+      try {
+        const hmac = crypto.createHmac('sha256', lemonSecret);
+        const digest = Buffer.from(hmac.update(rawBodyBuffer).digest('hex'), 'utf8');
+        const sigBuffer = Buffer.from(lemonSignature, 'utf8');
+
+        if (digest.length !== sigBuffer.length || !crypto.timingSafeEqual(digest, sigBuffer)) {
+          console.warn('Lemon Squeezy signature mismatch');
+          return res.status(401).send('Invalid signature');
+        }
+      } catch (err) {
+        console.error('Lemon Squeezy signature verification error:', err);
+        return res.status(400).send('Webhook signature verification error');
+      }
+    }
+
+    try {
+      const payload = JSON.parse(rawBodyBuffer.toString('utf8'));
+      const eventName = payload.meta && payload.meta.event_name;
+      
+      if (eventName === 'order_created') {
+        const userId =
+          (payload.meta && payload.meta.custom_data && payload.meta.custom_data.user_id) ||
+          (payload.data && payload.data.attributes && payload.data.attributes.checkout_data &&
+           payload.data.attributes.checkout_data.custom && payload.data.attributes.checkout_data.custom.user_id);
+        
+        if (userId) {
+          await grantSupporter(userId);
+        }
+      }
+      return res.json({ received: true, provider: 'lemonsqueezy' });
+    } catch (parseErr) {
+      console.error('Lemon Squeezy webhook parse error:', parseErr);
+      return res.status(400).send('Malformed JSON');
+    }
+  }
+
+  // Case 2: Stripe Webhook
+  if (stripeSignature) {
+    const webhookSecret = getStripeWebhookSecret();
+    const stripeClient = getStripeClient();
+    let event;
+
+    try {
+      if (webhookSecret && stripeSignature && stripeClient) {
+        event = stripeClient.webhooks.constructEvent(req.body, stripeSignature, webhookSecret);
+      } else {
+        event = Buffer.isBuffer(req.body)
+          ? JSON.parse(req.body.toString('utf8'))
+          : (typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
+      }
+    } catch (err) {
+      console.error(`Stripe webhook error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event && event.type === 'checkout.session.completed') {
+      const session = event.data && event.data.object;
+      const userId = session && session.metadata && session.metadata.userId;
+      if (userId) {
+        await grantSupporter(userId);
+      }
+    }
+
+    return res.json({ received: true, provider: 'stripe' });
+  }
+
+  // Case 3: Raw JSON event fallback in development or tests
+  try {
+    const parsed = Buffer.isBuffer(req.body)
+      ? JSON.parse(req.body.toString('utf8'))
+      : (typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
+    
+    if (parsed && parsed.meta && parsed.meta.event_name === 'order_created') {
+      const userId =
+        (parsed.meta.custom_data && parsed.meta.custom_data.user_id) ||
+        (parsed.data && parsed.data.attributes && parsed.data.attributes.checkout_data &&
+         parsed.data.attributes.checkout_data.custom && parsed.data.attributes.checkout_data.custom.user_id);
+      if (userId) await grantSupporter(userId);
+      return res.json({ received: true, provider: 'lemonsqueezy_unsigned' });
+    }
+  } catch (e) {
+    // ignore
   }
 
   res.json({ received: true });
-});
+};
+
+app.post('/api/webhook', handleUnifiedWebhook);
+app.post('/api/lemonsqueezy/webhook', handleUnifiedWebhook);
 
 // Comprehensive Status and Health Check API
 const handleHealthCheck = async (req, res) => {
@@ -752,6 +947,11 @@ const handleHealthCheck = async (req, res) => {
     hasCustomMongoDb: Boolean(process.env.MONGODB_DATABASE),
     hasStripeKey: Boolean(getStripeKey()),
     hasStripeWebhookSecret: Boolean(getStripeWebhookSecret()),
+    hasLemonApiKey: Boolean(getLemonSqueezyApiKey()),
+    hasLemonStoreId: Boolean(getLemonSqueezyStoreId()),
+    hasLemonVariantId: Boolean(getLemonSqueezyVariantId()),
+    hasLemonWebhookSecret: Boolean(getLemonSqueezyWebhookSecret()),
+    isLemonConfigured: isLemonSqueezyConfigured(),
     hasJwtSecret: Boolean(process.env.JWT_SECRET)
   };
 
