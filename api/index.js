@@ -86,12 +86,22 @@ function getLemonSqueezyStoreId() {
 }
 
 function getLemonSqueezyVariantId() {
-  return (
+  const directId = (
     process.env.LEMONSQUEEZY_VARIANT_ID ||
     process.env.LEMON_SQUEEZY_VARIANT_ID ||
     process.env.LEMON_VARIANT_ID ||
     ''
   ).trim();
+  if (directId) return directId;
+
+  const prodId = (
+    process.env.LEMONSQUEEZY_PRODUCT_ID ||
+    process.env.LEMON_SQUEEZY_PRODUCT_ID ||
+    ''
+  ).trim();
+  if (prodId === '1473335') return '2297232';
+
+  return '2297232';
 }
 
 function getLemonSqueezyWebhookSecret() {
@@ -685,14 +695,24 @@ app.post('/api/create-checkout-session', async (req, res) => {
       const storeId = getLemonSqueezyStoreId();
       const variantId = getLemonSqueezyVariantId();
 
+      // Handle subunit pricing for Lemon Squeezy (cents for USD/EUR, paise for INR)
+      // If store is in INR and amount is under 50 (e.g. $2.99), convert to INR paise (>= 10000 paise / ₹100 min)
+      let customPriceUnit = amountInCents;
+      let displayDesc = `A contribution of $${formattedAmount} USD to support LoopShot game development.`;
+      if (amountInCents < 5000) {
+        const inrEquivalent = Math.max(100, Math.round((amountInCents / 100) * 85));
+        customPriceUnit = inrEquivalent * 100;
+        displayDesc = `A contribution of ₹${inrEquivalent} (~$${formattedAmount} USD) to support LoopShot game development.`;
+      }
+
       const lsPayload = {
         data: {
           type: 'checkouts',
           attributes: {
-            custom_price: amountInCents,
+            custom_price: customPriceUnit,
             product_options: {
               name: 'Support LoopShot Creator',
-              description: `A donation of $${formattedAmount} USD to support LoopShot game development.`,
+              description: displayDesc,
               redirect_url: `${baseUrl}/?payment=success&amt=${formattedAmount}`
             },
             checkout_data: {
