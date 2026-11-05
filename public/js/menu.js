@@ -277,19 +277,14 @@
 
   // Support Creator Modal Setup & Controls
   const modalSupport = document.getElementById('modal-support-creator');
-  const presetButtons = document.querySelectorAll('.preset-btn');
+  const presetButtons = document.querySelectorAll('.preset-btn:not(.upi-preset-btn)');
   const customAmountInput = document.getElementById('custom-support-amount');
   const checkoutBtnText = document.getElementById('checkout-btn-text');
   const btnProceedCheckout = document.getElementById('btn-proceed-checkout');
 
   // Open Support Creator modal
+  // Anyone can tip via UPI / Ko-fi; card checkout (badge) still requires login.
   btnSupport.addEventListener('click', () => {
-    const token = localStorage.getItem('ls_token');
-    if (!token) {
-      alert('Please log in first to support the creator and unlock your supporter badge!');
-      openModal(modalLink);
-      return;
-    }
     openModal(modalSupport);
   });
 
@@ -379,6 +374,132 @@
       }
     });
   }
+
+  // ===== Support tabs: UPI (India) and Card / PayPal (international) =====
+  const supportTabs = document.querySelectorAll('.support-tab');
+  const supportPanes = document.querySelectorAll('.support-pane');
+  supportTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      supportTabs.forEach(t => t.classList.toggle('active', t === tab));
+      supportPanes.forEach(p => p.classList.toggle('hidden', p.id !== tab.dataset.pane));
+    });
+  });
+
+  const upiPresetButtons = document.querySelectorAll('.upi-preset-btn');
+  const upiAmountInput = document.getElementById('custom-upi-amount');
+  const upiQrImg = document.getElementById('upi-qr-img');
+  const upiAppBtn = document.getElementById('btn-open-upi-app');
+  const upiAppBtnText = document.getElementById('upi-app-btn-text');
+  const upiMaskedId = document.getElementById('upi-masked-id');
+  const btnCopyUpi = document.getElementById('btn-copy-upi');
+  const btnUpiPaid = document.getElementById('btn-upi-paid');
+  let upiLinkTimer = null;
+
+  function currentUpiAmount() {
+    const v = Math.round(parseFloat(upiAmountInput ? upiAmountInput.value : '99'));
+    return (!isNaN(v) && v >= 1 && v <= 100000) ? v : null;
+  }
+
+  async function fetchUpiLink(amount) {
+    const res = await fetch(`/api/support/upi-link?amount=${amount}`);
+    if (!res.ok) throw new Error('Could not build UPI link');
+    return (await res.json()).link;
+  }
+
+  function refreshUpi() {
+    const amt = currentUpiAmount();
+    if (!amt) {
+      if (upiAppBtnText) upiAppBtnText.textContent = 'ENTER AN AMOUNT';
+      upiAppBtn && upiAppBtn.classList.add('disabled');
+      return;
+    }
+    upiAppBtn && upiAppBtn.classList.remove('disabled');
+    if (upiAppBtnText) upiAppBtnText.textContent = `PAY ₹${amt} WITH UPI APP`;
+    if (upiQrImg) upiQrImg.src = `/api/support/upi-qr.svg?amount=${amt}`;
+    clearTimeout(upiLinkTimer);
+    upiLinkTimer = setTimeout(async () => {
+      try {
+        const link = await fetchUpiLink(amt);
+        if (upiAppBtn && currentUpiAmount() === amt) upiAppBtn.href = link;
+      } catch (e) { /* keep previous link */ }
+    }, 150);
+  }
+
+  upiPresetButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      upiPresetButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (upiAmountInput) upiAmountInput.value = btn.dataset.amount;
+      refreshUpi();
+    });
+  });
+
+  if (upiAmountInput) {
+    upiAmountInput.addEventListener('input', () => {
+      const v = parseFloat(upiAmountInput.value);
+      upiPresetButtons.forEach(b => b.classList.toggle('active', parseFloat(b.dataset.amount) === v));
+      refreshUpi();
+    });
+  }
+
+  if (upiAppBtn) {
+    upiAppBtn.addEventListener('click', (e) => {
+      if (!currentUpiAmount() || !upiAppBtn.href.startsWith('upi:')) {
+        e.preventDefault();
+        return;
+      }
+      if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        e.preventDefault();
+        alert('UPI apps open on phones. On a computer, scan the QR code above with Google Pay, PhonePe, Paytm or any UPI app.');
+      }
+    });
+  }
+
+  if (btnCopyUpi) {
+    btnCopyUpi.addEventListener('click', async () => {
+      try {
+        const amt = currentUpiAmount() || 1;
+        const link = await fetchUpiLink(amt);
+        const id = new URLSearchParams(link.split('?')[1]).get('pa');
+        await navigator.clipboard.writeText(id);
+        btnCopyUpi.textContent = 'COPIED!';
+      } catch (e) {
+        btnCopyUpi.textContent = 'FAILED';
+      }
+      setTimeout(() => { btnCopyUpi.textContent = 'COPY'; }, 1500);
+    });
+  }
+
+  if (btnUpiPaid) {
+    btnUpiPaid.addEventListener('click', () => {
+      alert('🎉 Thank you so much for supporting LoopShot! Every rupee helps keep the game growing.');
+      closeModal(modalSupport);
+    });
+  }
+
+  // Load support configuration (UPI, Ko-fi, card checkout availability)
+  (async () => {
+    try {
+      const res = await fetch('/api/support/config');
+      const cfg = await res.json();
+      if (upiMaskedId && cfg.upi && cfg.upi.maskedId) upiMaskedId.textContent = cfg.upi.maskedId;
+      const kofiBox = document.getElementById('kofi-box');
+      const kofiBtn = document.getElementById('btn-kofi');
+      if (cfg.kofi && cfg.kofi.enabled && kofiBox && kofiBtn) {
+        kofiBtn.href = cfg.kofi.url;
+        kofiBox.classList.remove('hidden');
+      }
+      const cardBox = document.getElementById('card-checkout-box');
+      if (cardBox && !(cfg.card && cfg.card.enabled)) {
+        cardBox.classList.add('hidden');
+        if (!(cfg.kofi && cfg.kofi.enabled)) {
+          const na = document.getElementById('card-unavailable');
+          na && na.classList.remove('hidden');
+        }
+      }
+    } catch (e) { /* leave defaults */ }
+    refreshUpi();
+  })();
 
   // Event listener for all close buttons
   document.querySelectorAll('.btn-close-modal').forEach(btn => {

@@ -987,6 +987,80 @@ const handleHealthCheck = async (req, res) => {
 app.get('/api/status', handleHealthCheck);
 app.get('/api/health', handleHealthCheck);
 
+// ===== Direct UPI + Ko-fi support (no gateway, no platform fee) =====
+// The payee name shown in the UPI link is a public display name, never the
+// account holder's legal name.
+function getUpiConfig() {
+  const id = (process.env.UPI_ID || 'yashasmahale@okicici').trim();
+  const name = (process.env.UPI_DISPLAY_NAME || 'LoopShot').trim();
+  return { id, name };
+}
+
+function getKofiUsername() {
+  return (process.env.KOFI_USERNAME || '').trim().replace(/^@/, '');
+}
+
+function maskUpiId(id) {
+  const [handle, bank] = id.split('@');
+  if (!handle || !bank) return '';
+  const visible = handle.slice(0, 2);
+  return `${visible}${'•'.repeat(Math.max(3, handle.length - 2))}@${bank}`;
+}
+
+function parseInrAmount(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1 || n > 100000) return NaN;
+  return Math.round(n * 100) / 100;
+}
+
+function buildUpiLink(amount) {
+  const { id, name } = getUpiConfig();
+  // Encode values but keep '@' literal; some UPI apps reject '%40' in the VPA
+  const enc = (v) => encodeURIComponent(v).replace(/%40/g, '@');
+  const parts = [`pa=${enc(id)}`, `pn=${enc(name)}`];
+  if (amount) parts.push(`am=${amount.toFixed(2)}`);
+  parts.push('cu=INR', `tn=${enc('LoopShot support')}`);
+  return `upi://pay?${parts.join('&')}`;
+}
+
+app.get('/api/support/config', (req, res) => {
+  const { id } = getUpiConfig();
+  const kofi = getKofiUsername();
+  res.json({
+    upi: id ? { enabled: true, maskedId: maskUpiId(id), displayName: getUpiConfig().name } : { enabled: false },
+    kofi: kofi ? { enabled: true, url: `https://ko-fi.com/${encodeURIComponent(kofi)}` } : { enabled: false },
+    card: { enabled: isLemonSqueezyConfigured() || Boolean(getStripeKey()) }
+  });
+});
+
+// Returns the UPI deep link for the mobile "open app" button
+app.get('/api/support/upi-link', (req, res) => {
+  const amount = parseInrAmount(req.query.amount);
+  if (Number.isNaN(amount)) return res.status(400).json({ error: 'Amount must be between ₹1 and ₹1,00,000' });
+  res.json({ link: buildUpiLink(amount) });
+});
+
+// Returns a clean QR (SVG) without the account holder's name or photo
+app.get('/api/support/upi-qr.svg', async (req, res) => {
+  const amount = parseInrAmount(req.query.amount);
+  if (Number.isNaN(amount)) return res.status(400).send('Invalid amount');
+  try {
+    const QRCode = require('qrcode');
+    const svg = await QRCode.toString(buildUpiLink(amount), {
+      type: 'svg',
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      color: { dark: '#16121f', light: '#ffffff' }
+    });
+    res.set('Content-Type', 'image/svg+xml');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(svg);
+  } catch (err) {
+    res.status(500).send('QR generation failed');
+  }
+});
+
 // Export the app for Vercel serverless function execution
 module.exports = app;
 

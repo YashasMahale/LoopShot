@@ -304,6 +304,72 @@
         <p class="modal-desc">Fuel LoopShot's development and unlock your exclusive golden <strong>SUPPORTER</strong> badge & profile glow!</p>
       </div>
 
+      <div class="support-tabs" role="tablist">
+        <button type="button" class="support-tab active" data-pane="support-pane-upi" role="tab">🇮🇳 UPI</button>
+        <button type="button" class="support-tab" data-pane="support-pane-card" role="tab">🌍 CARD / PAYPAL</button>
+      </div>
+
+      <!-- UPI pane (India: Google Pay, PhonePe, Paytm, BHIM...) -->
+      <div class="support-pane" id="support-pane-upi">
+        <div class="support-section-label">CHOOSE AN AMOUNT (₹ INR)</div>
+        <div class="support-presets">
+          <button type="button" class="preset-btn upi-preset-btn" data-amount="49">
+            <span class="preset-icon">☕</span>
+            <span class="preset-price">₹49</span>
+            <span class="preset-name">Chai</span>
+          </button>
+          <button type="button" class="preset-btn upi-preset-btn active popular" data-amount="99">
+            <span class="preset-popular-tag">POPULAR</span>
+            <span class="preset-icon">🍕</span>
+            <span class="preset-price">₹99</span>
+            <span class="preset-name">Snack</span>
+          </button>
+          <button type="button" class="preset-btn upi-preset-btn" data-amount="199">
+            <span class="preset-icon">⭐</span>
+            <span class="preset-price">₹199</span>
+            <span class="preset-name">Super Fan</span>
+          </button>
+        </div>
+
+        <div class="custom-amount-wrapper">
+          <label for="custom-upi-amount">OR ENTER ANY AMOUNT (₹ INR)</label>
+          <div class="custom-amount-input-box">
+            <span class="currency-symbol">₹</span>
+            <input type="number" id="custom-upi-amount" min="1" max="100000" step="1" value="99" placeholder="99" />
+          </div>
+        </div>
+
+        <div class="upi-qr-box">
+          <img id="upi-qr-img" alt="UPI QR code for supporting LoopShot" width="200" height="200" />
+          <div class="upi-qr-caption">Scan with Google Pay, PhonePe, Paytm or any UPI app</div>
+          <div class="upi-id-row">
+            <span>UPI ID:</span>
+            <code id="upi-masked-id">—</code>
+            <button type="button" class="upi-copy-btn" id="btn-copy-upi">COPY</button>
+          </div>
+        </div>
+
+        <a id="btn-open-upi-app" class="btn-primary support-checkout-btn upi-app-btn" href="#">
+          <span id="upi-app-btn-text">PAY ₹99 WITH UPI APP</span>
+        </a>
+
+        <button type="button" id="btn-upi-paid" class="upi-paid-btn">I'VE PAID — THANK YOU! 💛</button>
+
+        <div class="stripe-secure-note">
+          <span>Goes directly to the creator via UPI. 0% fees. UPI tips don't unlock the automatic badge.</span>
+        </div>
+      </div>
+
+      <!-- Card / PayPal pane -->
+      <div class="support-pane hidden" id="support-pane-card">
+      <div id="kofi-box" class="kofi-box hidden">
+        <a id="btn-kofi" class="btn-primary support-checkout-btn kofi-btn" href="#" target="_blank" rel="noopener">
+          <span>☕ SUPPORT ON KO-FI (PAYPAL / CARD)</span>
+        </a>
+        <div class="stripe-secure-note"><span>Opens Ko-fi in a new tab. Pay with PayPal or any debit/credit card.</span></div>
+      </div>
+
+      <div id="card-checkout-box">
       <div class="support-section-label">CHOOSE YOUR CONTRIBUTION</div>
       <div class="support-presets">
         <button type="button" class="preset-btn active" data-amount="2.99">
@@ -361,6 +427,9 @@
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
         <span>Encrypted & secure checkout via Lemon Squeezy</span>
+      </div>
+      </div>
+      <div id="card-unavailable" class="stripe-secure-note hidden"><span>International payments are coming soon. Please use UPI for now.</span></div>
       </div>
     </div>
   </div>
