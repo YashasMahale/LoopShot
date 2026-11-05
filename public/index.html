@@ -153,12 +153,12 @@
       <!-- Login Form -->
       <form id="form-login">
         <div class="input-group">
-          <label for="login-username">Username</label>
-          <input type="text" id="login-username" required placeholder="Enter username...">
+          <label for="login-username">Username or Email</label>
+          <input type="text" id="login-username" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Enter username or email...">
         </div>
         <div class="input-group">
           <label for="login-password">Password</label>
-          <input type="password" id="login-password" required placeholder="Enter password...">
+          <input type="password" id="login-password" required autocomplete="current-password" placeholder="Enter password...">
         </div>
         <div id="auth-error-login" style="color: #ff5a4e; font-size: 13px; font-weight: 700; margin-bottom: 12px; display: none;"></div>
         <button type="submit" class="btn-modal-submit">Log In</button>
@@ -167,15 +167,42 @@
       <!-- Register Form -->
       <form id="form-register" style="display: none;">
         <div class="input-group">
+          <label for="register-email">Email</label>
+          <input type="email" id="register-email" required autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="you@example.com">
+        </div>
+        <div class="input-group">
           <label for="register-username">Username</label>
-          <input type="text" id="register-username" required placeholder="Choose a username...">
+          <input type="text" id="register-username" required autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="15" placeholder="Choose a username...">
+          <small class="field-hint">3–15 characters: letters, numbers, _ . or -</small>
         </div>
         <div class="input-group">
           <label for="register-password">Password</label>
-          <input type="password" id="register-password" required placeholder="Choose a password...">
+          <input type="password" id="register-password" required autocomplete="new-password" minlength="8" maxlength="72" placeholder="Choose a password...">
+          <ul class="pw-rules" id="pw-rules">
+            <li data-rule="len">At least 8 characters</li>
+            <li data-rule="upper">One uppercase letter (A–Z)</li>
+            <li data-rule="special">One special character (! @ # $ …)</li>
+          </ul>
         </div>
         <div id="auth-error-register" style="color: #ff5a4e; font-size: 13px; font-weight: 700; margin-bottom: 12px; display: none;"></div>
         <button type="submit" class="btn-modal-submit">Create Account</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Email Modal (for accounts created before emails were required) -->
+  <div class="modal hidden" id="modal-add-email">
+    <div class="modal-content">
+      <button class="btn-close-modal" data-modal="modal-add-email">&times;</button>
+      <h3>Add Your Email</h3>
+      <p class="modal-desc">Your account doesn't have an email yet. Add one so your account stays secure.</p>
+      <form id="form-add-email">
+        <div class="input-group">
+          <label for="add-email-input">Email</label>
+          <input type="email" id="add-email-input" required autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="you@example.com">
+        </div>
+        <div id="auth-error-add-email" style="color: #ff5a4e; font-size: 13px; font-weight: 700; margin-bottom: 12px; display: none;"></div>
+        <button type="submit" class="btn-modal-submit">Save Email</button>
       </form>
     </div>
   </div>

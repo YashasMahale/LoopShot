@@ -21,14 +21,14 @@
     return AC;
   };
 
-  const playTone = (freq, dur = 0.08, type = 'square', vol = 0.1) => {
+  const playTone = (freq, dur = 0.08, type = 'square', vol = 0.1, when = 0) => {
     if (mute) return;
     const ctx = ac();
     if (!ctx) return;
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + when;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     
@@ -80,6 +80,26 @@
   const loginPasswordInput = document.getElementById('login-password');
   const registerUsernameInput = document.getElementById('register-username');
   const registerPasswordInput = document.getElementById('register-password');
+  const registerEmailInput = document.getElementById('register-email');
+  const pwRules = document.getElementById('pw-rules');
+  const modalAddEmail = document.getElementById('modal-add-email');
+  const formAddEmail = document.getElementById('form-add-email');
+  const addEmailInput = document.getElementById('add-email-input');
+  const addEmailError = document.getElementById('auth-error-add-email');
+
+  // Same rules as the server
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const passwordChecks = (pw) => ({
+    len: pw.length >= 8 && pw.length <= 72,
+    upper: /[A-Z]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw)
+  });
+  const updatePwRules = () => {
+    if (!pwRules) return;
+    const checks = passwordChecks(registerPasswordInput.value);
+    pwRules.querySelectorAll('li').forEach(li => li.classList.toggle('ok', Boolean(checks[li.dataset.rule])));
+  };
+  registerPasswordInput.addEventListener('input', updatePwRules);
   const loginError = document.getElementById('auth-error-login');
   const registerError = document.getElementById('auth-error-register');
   const btnLogout = document.getElementById('btn-logout');
@@ -210,6 +230,8 @@
     }
   }
 
+  const escapeHtml = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   function renderLeaderboard(mode) {
     if (!lbList) return;
     if (!cachedLeaderboardData || !cachedLeaderboardData[mode] || cachedLeaderboardData[mode].length === 0) {
@@ -241,13 +263,13 @@
         <div class="lb-row ${rankClass}">
           <div class="lb-rank">${medal}</div>
           <div class="lb-player">
-            <div class="lb-avatar" style="${avatarBg}">${item.username.slice(0, 2).toUpperCase()}</div>
+            <div class="lb-avatar" style="${avatarBg}">${escapeHtml(String(item.username).slice(0, 2).toUpperCase())}</div>
             <div class="lb-name-group">
-              <span class="lb-username">${item.username.toUpperCase()}</span>
+              <span class="lb-username">${escapeHtml(String(item.username).toUpperCase())}</span>
               ${supporterTag}
             </div>
           </div>
-          <div class="lb-score">${item.score}</div>
+          <div class="lb-score">${escapeHtml(item.score)}</div>
         </div>
       `;
     });
@@ -518,6 +540,13 @@
     });
   });
 
+  // Close the top-most open modal with the Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const open = Array.from(document.querySelectorAll('.modal:not(.hidden)')).pop();
+    if (open) closeModal(open);
+  });
+
   // Settings: Volume slider change
   let volumeTimeout = null;
   volumeSlider.addEventListener('input', (e) => {
@@ -609,6 +638,9 @@
 
       // Check if there was a score waiting to be saved from guest play
       await checkAndSubmitPendingScore(data.token);
+
+      // Older accounts: ask for an email
+      if (data.needsEmail && modalAddEmail) openModal(modalAddEmail);
     } catch (err) {
       loginError.textContent = err.message;
       loginError.style.display = 'block';
@@ -622,12 +654,25 @@
     registerError.style.display = 'none';
     const username = registerUsernameInput.value.trim();
     const password = registerPasswordInput.value;
+    const email = registerEmailInput.value.trim();
+
+    const showRegisterError = (msg) => {
+      registerError.textContent = msg;
+      registerError.style.display = 'block';
+      playTone(160, 0.2, 'sawtooth', 0.1);
+    };
+    if (!EMAIL_RE.test(email)) return showRegisterError('Please enter a valid email address');
+    if (!/^[A-Za-z0-9_.-]{3,15}$/.test(username)) return showRegisterError('Username must be 3–15 characters: letters, numbers, _ . or -');
+    const checks = passwordChecks(password);
+    if (!checks.len) return showRegisterError('Password must be 8–72 characters');
+    if (!checks.upper) return showRegisterError('Password needs at least one uppercase letter');
+    if (!checks.special) return showRegisterError('Password needs at least one special character');
     
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ email, username, password })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
@@ -653,6 +698,34 @@
       playTone(160, 0.2, 'sawtooth', 0.1);
     }
   });
+
+  // Add email for older accounts
+  if (formAddEmail) {
+    formAddEmail.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      addEmailError.style.display = 'none';
+      const email = addEmailInput.value.trim();
+      if (!EMAIL_RE.test(email)) {
+        addEmailError.textContent = 'Please enter a valid email address';
+        addEmailError.style.display = 'block';
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('ls_token')}` },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not save email');
+        closeModal(modalAddEmail);
+        playTone(659, 0.08, 'square', 0.08);
+      } catch (err) {
+        addEmailError.textContent = err.message;
+        addEmailError.style.display = 'block';
+      }
+    });
+  }
 
   // Logout button trigger
   btnLogout.addEventListener('click', () => {
@@ -687,6 +760,13 @@
           localStorage.setItem('ls_best', maxScore);
         }
         updateUI();
+        // Ask older accounts for an email once per browser session
+        let asked = false;
+        try { asked = sessionStorage.getItem('ls_email_prompted') === '1'; } catch (e) {}
+        if (data.hasEmail === false && !asked && modalAddEmail) {
+          try { sessionStorage.setItem('ls_email_prompted', '1'); } catch (e) {}
+          openModal(modalAddEmail);
+        }
       } else {
         // Clear invalid token
         localStorage.removeItem('ls_token');
@@ -833,7 +913,8 @@
   }
 
   fetchGlobalScores();
-  setInterval(fetchGlobalScores, 5000); // Polling every 5 seconds for real-time updates
+  // Poll every 5 seconds for real-time updates, but only while the tab is visible
+  setInterval(() => { if (!document.hidden) fetchGlobalScores(); }, 5000);
   
   updateUI();
   requestAnimationFrame(frame);

@@ -36,7 +36,29 @@ const crypto = require('crypto');
 
 const app = express();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'loopshot-default-super-secret-key-123456';
+// Never fall back to a secret that is written in the source code: anyone could
+// forge login tokens with it. Without JWT_SECRET, derive one from the private
+// database URI; locally (no DB) use a random per-process secret.
+const IS_PRODUCTION = Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
+const JWT_SECRET = (() => {
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.trim()) return process.env.JWT_SECRET.trim();
+  const dbUri = (process.env.MONGODB_URI || process.env.MONGODB_URL || process.env.STORAGE_URL ||
+    process.env.DATABASE_URL || process.env.MONGO_URL || process.env.MONGODB_CONNECTION_STRING || '').trim();
+  if (dbUri) {
+    console.warn('JWT_SECRET is not set; deriving one from the database URI. Set JWT_SECRET in your environment.');
+    return crypto.createHash('sha256').update('loopshot-jwt:' + dbUri).digest('hex');
+  }
+  return crypto.randomBytes(32).toString('hex');
+})();
+
+// Admin-only routes require ADMIN_SECRET sent as the "x-admin-secret" header
+function isAdminRequest(req) {
+  const secret = (process.env.ADMIN_SECRET || '').trim();
+  const given = String(req.headers['x-admin-secret'] || '');
+  if (!secret || !given) return false;
+  const a = Buffer.from(secret), b = Buffer.from(given);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 // Support multiple Stripe key environment variable names
 function getStripeKey() {
@@ -387,6 +409,9 @@ app.get('/api/leaderboard', async (req, res) => {
 
 // Reset all high scores in database like the game is new
 app.post('/api/admin/reset-scores', async (req, res) => {
+  if (!isAdminRequest(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     let dbReset = false;
     let usersResetCount = 0;
@@ -440,10 +465,10 @@ app.post('/api/admin/reset-scores', async (req, res) => {
 // POST high score - REQUIRES AUTHENTICATION (Scores are only saved when logged in)
 app.post('/api/scores', async (req, res) => {
   try {
-    const { mode, score } = req.body;
+    const { mode, score } = req.body || {};
 
-    if (typeof score !== 'number') {
-      return res.status(400).json({ error: 'Score must be a number' });
+    if (typeof score !== 'number' || !Number.isInteger(score) || score < 0 || score > 100000) {
+      return res.status(400).json({ error: 'Score must be a whole number between 0 and 100000' });
     }
 
     // Only logged in players can save high scores
@@ -495,100 +520,208 @@ app.post('/api/scores', async (req, res) => {
 });
 
 // Custom Authentication Routes
+// ---------- Account validation rules ----------
+const EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+function validateUsername(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return { error: 'Username is required' };
+  const u = raw.trim().toLowerCase();
+  if (u.length < 3 || u.length > 15) return { error: 'Username must be between 3 and 15 characters' };
+  if (!/^[a-z0-9_.-]+$/.test(u)) return { error: 'Username can only use letters, numbers, _ . and -' };
+  return { value: u };
+}
+
+function validatePassword(pw) {
+  if (typeof pw !== 'string' || !pw) return { error: 'Password is required' };
+  if (pw.length < 8) return { error: 'Password must be at least 8 characters' };
+  if (pw.length > 72) return { error: 'Password must be at most 72 characters' };
+  if (!/[A-Z]/.test(pw)) return { error: 'Password must contain at least one uppercase letter' };
+  if (!/[^A-Za-z0-9]/.test(pw)) return { error: 'Password must contain at least one special character (e.g. ! @ # $)' };
+  return { value: pw };
+}
+
+// Checks the address format, then that the domain can actually receive mail (MX/A record)
+async function validateEmail(raw) {
+  if (typeof raw !== 'string' || !raw.trim()) return { error: 'Email is required' };
+  const email = raw.trim().toLowerCase();
+  if (email.length > 254 || !EMAIL_RE.test(email)) return { error: 'Please enter a valid email address' };
+  const domain = email.split('@')[1];
+  try {
+    const dns = require('dns').promises;
+    const withTimeout = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'ETIMEOUT' })), 3000))]);
+    let ok = false;
+    try { ok = (await withTimeout(dns.resolveMx(domain))).length > 0; } catch (e) {
+      if (e.code !== 'ENODATA' && e.code !== 'ENOTFOUND') throw e;
+    }
+    if (!ok) {
+      try { ok = (await withTimeout(dns.resolve(domain))).length > 0; } catch (e) {
+        if (e.code !== 'ENODATA' && e.code !== 'ENOTFOUND') throw e;
+      }
+    }
+    if (!ok) return { error: `The email domain "${domain}" can't receive mail. Please check your email.` };
+  } catch (e) {
+    // DNS unavailable or slow: don't block signups because of our own network issue
+    console.warn('Email domain check skipped:', e.code || e.message);
+  }
+  return { value: email };
+}
+
+// Unique indexes so two people can never share an email (usernames are the _id)
+let userIndexesReady = null;
+function ensureUserIndexes(db) {
+  if (!userIndexesReady) {
+    userIndexesReady = db.collection('users').createIndex(
+      { email: 1 },
+      { unique: true, name: 'email_unique', partialFilterExpression: { email: { $type: 'string' } } }
+    ).catch(err => {
+      userIndexesReady = null;
+      console.error('Failed to create users.email index:', err.message);
+    });
+  }
+  return userIndexesReady;
+}
+
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-    const cleanUsername = username.trim().toLowerCase();
-    if (cleanUsername.length < 3 || cleanUsername.length > 15) {
-      return res.status(400).json({ error: 'Username must be between 3 and 15 characters' });
-    }
-    if (password.length < 4) {
-      return res.status(400).json({ error: 'Password must be at least 4 characters' });
-    }
+    const body = req.body || {};
+    const u = validateUsername(body.username);
+    if (u.error) return res.status(400).json({ error: u.error, field: 'username' });
+    const p = validatePassword(body.password);
+    if (p.error) return res.status(400).json({ error: p.error, field: 'password' });
+    const em = await validateEmail(body.email);
+    if (em.error) return res.status(400).json({ error: em.error, field: 'email' });
 
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
+    const cleanUsername = u.value;
+    const email = em.value;
+    const passwordHash = await bcrypt.hash(p.value, 10);
+    const bestScores = { easy: 0, hard: 0, nightmare: 0 };
 
     if (isDatabaseConfigured()) {
       const { db } = await connectToDatabase();
+      await ensureUserIndexes(db);
       const collection = db.collection('users');
-      
-      const existingUser = await collection.findOne({ _id: cleanUsername });
-      if (existingUser) {
-        return res.status(400).json({ error: 'Username is already taken' });
+
+      if (await collection.findOne({ _id: cleanUsername }, { projection: { _id: 1 } })) {
+        return res.status(400).json({ error: 'Username is already taken', field: 'username' });
+      }
+      if (await collection.findOne({ email }, { projection: { _id: 1 } })) {
+        return res.status(400).json({ error: 'An account with this email already exists', field: 'email' });
       }
 
-      const newUser = {
-        _id: cleanUsername,
-        passwordHash,
-        bestScores: { easy: 0, hard: 0, nightmare: 0 },
-        isSupporter: false,
-        createdAt: new Date()
-      };
-      await collection.insertOne(newUser);
-      
-      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, username: cleanUsername, bestScores: newUser.bestScores });
+      try {
+        await collection.insertOne({
+          _id: cleanUsername,
+          email,
+          passwordHash,
+          bestScores,
+          isSupporter: false,
+          createdAt: new Date()
+        });
+      } catch (err) {
+        if (err && err.code === 11000) {
+          const emailClash = err.keyPattern && err.keyPattern.email;
+          return res.status(400).json(emailClash
+            ? { error: 'An account with this email already exists', field: 'email' }
+            : { error: 'Username is already taken', field: 'username' });
+        }
+        throw err;
+      }
     } else {
       if (!global.localUsers) global.localUsers = {};
       if (global.localUsers[cleanUsername]) {
-        return res.status(400).json({ error: 'Username is already taken' });
+        return res.status(400).json({ error: 'Username is already taken', field: 'username' });
       }
-      global.localUsers[cleanUsername] = {
-        passwordHash,
-        bestScores: { easy: 0, hard: 0, nightmare: 0 },
-        isSupporter: false
-      };
-      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, username: cleanUsername, bestScores: { easy: 0, hard: 0, nightmare: 0 } });
+      if (Object.values(global.localUsers).some(x => x.email === email)) {
+        return res.status(400).json({ error: 'An account with this email already exists', field: 'email' });
+      }
+      global.localUsers[cleanUsername] = { email, passwordHash, bestScores, isSupporter: false };
     }
+
+    const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
+    return res.json({ token, username: cleanUsername, bestScores });
   } catch (e) {
     console.error('Registration error:', e);
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: 'Registration failed. Please try again.' });
   }
 });
 
+// Log in with either username or email
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+    const body = req.body || {};
+    const identifier = typeof body.username === 'string' ? body.username : body.identifier;
+    const password = body.password;
+    if (typeof identifier !== 'string' || typeof password !== 'string' || !identifier.trim() || !password) {
+      return res.status(400).json({ error: 'Username/email and password are required' });
     }
-    const cleanUsername = username.trim().toLowerCase();
+    const id = identifier.trim().toLowerCase();
+    const byEmail = id.includes('@');
+    const invalid = () => res.status(400).json({ error: 'Invalid username/email or password' });
+
+    let username = null;
+    let user = null;
+    if (isDatabaseConfigured()) {
+      const { db } = await connectToDatabase();
+      user = await db.collection('users').findOne(byEmail ? { email: id } : { _id: id });
+      if (user) username = user._id;
+    } else if (global.localUsers) {
+      if (byEmail) {
+        const entry = Object.entries(global.localUsers).find(([, v]) => v.email === id);
+        if (entry) { username = entry[0]; user = entry[1]; }
+      } else if (global.localUsers[id]) {
+        username = id; user = global.localUsers[id];
+      }
+    }
+
+    if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+      return invalid();
+    }
+
+    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' });
+    return res.json({
+      token,
+      username,
+      bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 },
+      isSupporter: user.isSupporter || false,
+      needsEmail: !user.email
+    });
+  } catch (e) {
+    console.error('Login error:', e);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
+// Lets older accounts (created before emails were required) add an email
+app.post('/api/auth/email', async (req, res) => {
+  try {
+    const authUser = getOptionalUser(req);
+    if (!authUser) return res.status(401).json({ error: 'Please log in first' });
+    const em = await validateEmail((req.body || {}).email);
+    if (em.error) return res.status(400).json({ error: em.error, field: 'email' });
 
     if (isDatabaseConfigured()) {
       const { db } = await connectToDatabase();
-      const collection = db.collection('users');
-      const user = await collection.findOne({ _id: cleanUsername });
-      if (!user) {
-        return res.status(400).json({ error: 'Invalid username or password' });
+      await ensureUserIndexes(db);
+      const users = db.collection('users');
+      const clash = await users.findOne({ email: em.value, _id: { $ne: authUser.username } }, { projection: { _id: 1 } });
+      if (clash) return res.status(400).json({ error: 'An account with this email already exists', field: 'email' });
+      try {
+        await users.updateOne({ _id: authUser.username }, { $set: { email: em.value } });
+      } catch (err) {
+        if (err && err.code === 11000) return res.status(400).json({ error: 'An account with this email already exists', field: 'email' });
+        throw err;
       }
-
-      const isMatch = await bcrypt.compare(password, user.passwordHash);
-      if (!isMatch) {
-        return res.status(400).json({ error: 'Invalid username or password' });
-      }
-
-      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
     } else {
-      if (!global.localUsers || !global.localUsers[cleanUsername]) {
-        return res.status(400).json({ error: 'Invalid username or password' });
+      const all = global.localUsers || {};
+      if (Object.entries(all).some(([k, v]) => k !== authUser.username && v.email === em.value)) {
+        return res.status(400).json({ error: 'An account with this email already exists', field: 'email' });
       }
-      const user = global.localUsers[cleanUsername];
-      const isMatch = await bcrypt.compare(password, user.passwordHash);
-      if (!isMatch) {
-        return res.status(400).json({ error: 'Invalid username or password' });
-      }
-      const token = jwt.sign({ username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
+      if (all[authUser.username]) all[authUser.username].email = em.value;
     }
+    res.json({ success: true });
   } catch (e) {
-    console.error('Login error:', e);
-    res.status(500).json({ error: e.message });
+    console.error('Add email error:', e);
+    res.status(500).json({ error: 'Could not save email. Please try again.' });
   }
 });
 
@@ -609,7 +742,7 @@ app.get('/api/auth/me', async (req, res) => {
           const user = await collection.findOne({ _id: cleanUsername });
           if (!user) return res.status(404).json({ error: 'User not found' });
           
-          return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
+          return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false, hasEmail: Boolean(user.email) });
         } catch (dbErr) {
           return res.status(500).json({ error: dbErr.message });
         }
@@ -618,7 +751,7 @@ app.get('/api/auth/me', async (req, res) => {
           return res.status(404).json({ error: 'User not found' });
         }
         const user = global.localUsers[cleanUsername];
-        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false });
+        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false, hasEmail: Boolean(user.email) });
       }
     });
   } catch (e) {
@@ -628,6 +761,10 @@ app.get('/api/auth/me', async (req, res) => {
 
 // Supporter Badge Test Helper (allows logged in players to toggle test supporter status)
 app.post('/api/auth/dev-supporter', async (req, res) => {
+  // Testing helper only: never lets players give themselves the badge on the live site
+  if (IS_PRODUCTION && !isAdminRequest(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     const authUser = getOptionalUser(req);
     if (!authUser) {
@@ -838,6 +975,9 @@ const handleUnifiedWebhook = async (req, res) => {
       : Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body), 'utf8');
 
     const lemonSecret = getLemonSqueezyWebhookSecret();
+    if (!lemonSecret && IS_PRODUCTION) {
+      return res.status(503).send('Webhook secret not configured');
+    }
     if (lemonSecret) {
       try {
         const hmac = crypto.createHmac('sha256', lemonSecret);
@@ -884,6 +1024,9 @@ const handleUnifiedWebhook = async (req, res) => {
     try {
       if (webhookSecret && stripeSignature && stripeClient) {
         event = stripeClient.webhooks.constructEvent(req.body, stripeSignature, webhookSecret);
+      } else if (IS_PRODUCTION) {
+        // Unsigned events could grant the supporter badge for free
+        return res.status(503).send('Stripe webhook secret not configured');
       } else {
         event = Buffer.isBuffer(req.body)
           ? JSON.parse(req.body.toString('utf8'))
@@ -905,7 +1048,10 @@ const handleUnifiedWebhook = async (req, res) => {
     return res.json({ received: true, provider: 'stripe' });
   }
 
-  // Case 3: Raw JSON event fallback in development or tests
+  // Case 3: Raw JSON event fallback, local development only
+  if (IS_PRODUCTION) {
+    return res.status(400).send('Missing webhook signature');
+  }
   try {
     const parsed = Buffer.isBuffer(req.body)
       ? JSON.parse(req.body.toString('utf8'))

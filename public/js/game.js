@@ -7,11 +7,14 @@
 
   // Get active mode
   const urlParams = new URLSearchParams(window.location.search);
-  const mode = urlParams.get('mode') || 'easy'; // easy, hard, nightmare
+  const MODES = ['easy', 'hard', 'nightmare'];
+  const requestedMode = (urlParams.get('mode') || 'easy').toLowerCase();
+  const mode = MODES.includes(requestedMode) ? requestedMode : 'easy';
 
   let score = 0;
   let mute = localStorage.getItem('ls_mute') === 'true';
-  const loadBest = () => parseInt(localStorage.getItem(`ls_best_${mode}`) || localStorage.getItem('ls_best') || '0', 10);
+  // Each mode has its own best; don't borrow the best from another mode
+  const loadBest = () => parseInt(localStorage.getItem(`ls_best_${mode}`) || '0', 10) || 0;
   const saveBest = v => {
     localStorage.setItem(`ls_best_${mode}`, v);
     // Keep overall ls_best updated
@@ -36,6 +39,7 @@
   let inputLock = 0;           // tiny debounce after state changes
   const trailHistory = [];     // dynamic trail history for smooth motion trail
   let trailTimer = 0;
+  let hideOverTimer = null;     // pending "hide game-over screen" timeout
 
   // difficulty curves
   const speedFor = s => {
@@ -238,7 +242,8 @@
     placeZone();
     setWorldColor(0);
     elOver.classList.add('hidden');
-    setTimeout(() => { elOver.style.display = 'none'; }, 250);
+    clearTimeout(hideOverTimer);
+    hideOverTimer = setTimeout(() => { elOver.style.display = 'none'; }, 250);
     elScore.style.display = 'block';
     elScore.textContent = '0';
     elCombo.classList.remove('on');
@@ -296,6 +301,8 @@
 
     elScore.style.display = 'none';
     elCombo.classList.remove('on');
+    // A quick miss right after restarting must not let the old hide-timer hide this screen
+    clearTimeout(hideOverTimer);
     elOver.style.display = 'flex';
     requestAnimationFrame(() => elOver.classList.remove('hidden'));
     inputLock = performance.now() + 450;
@@ -371,18 +378,28 @@
     }
   }
 
+  const resumeAudio = () => { const a = ac(); if (a && a.state === 'suspended') a.resume(); };
+
   window.addEventListener('pointerdown', e => {
-    // Avoid triggering tap events if clicking navigation elements
-    if (e.target.closest('.btn-back-menu')) return;
-    ac() && AC.state === 'suspended' && AC.resume();
+    // Only the primary button / touch / pen counts as a tap
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // Let buttons (Menu, guest card actions) handle their own clicks
+    if (e.target.closest('.btn-back-menu, .guest-score-card, button, a')) return;
+    resumeAudio();
     tap();
   });
   window.addEventListener('keydown', e => {
     if (e.code === 'Space' || e.code === 'Enter') {
+      // Let Enter/Space activate a focused button normally
+      if (e.target.closest && e.target.closest('button, a, input')) return;
       e.preventDefault();
+      // Holding the key down must not fire repeated taps
+      if (e.repeat) return;
+      resumeAudio();
       tap();
     }
   });
+  window.addEventListener('contextmenu', e => e.preventDefault());
 
   // ---------- render ----------
   let last = null;
