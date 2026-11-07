@@ -1,0 +1,11 @@
+{
+  "appId": "com.yashasmahale.loopshot",
+  "appName": "LoopShot",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  },
+  "ios": {
+    "contentInset": "never"
+  }
+}

@@ -140,7 +140,7 @@
     const token = localStorage.getItem('ls_token');
     if (!token) return;
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(API_BASE + '/api/auth/me', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -163,7 +163,7 @@
 
   async function fetchGlobalBest() {
     try {
-      const res = await fetch('/api/scores');
+      const res = await fetch(API_BASE + '/api/scores');
       if (res.ok) {
         const scores = await res.json();
         const modeBest = scores[mode];
@@ -205,7 +205,7 @@
       'Authorization': `Bearer ${token}`
     };
     try {
-      const res = await fetch('/api/scores', {
+      const res = await fetch(API_BASE + '/api/scores', {
         method: 'POST',
         headers,
         body: JSON.stringify({ mode, score, username })
@@ -517,7 +517,7 @@
       if (score > 0) {
         localStorage.setItem('ls_pending_score', JSON.stringify({ mode, score }));
       }
-      location.href = '/?auth=login';
+      location.href = '/index.html?auth=login';
     });
   }
 

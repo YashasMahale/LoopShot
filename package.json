@@ -5,7 +5,10 @@
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js",
-    "dev": "node api/index.js"
+    "dev": "node api/index.js",
+    "app:sync": "cap sync",
+    "app:android": "cap open android",
+    "app:ios": "cap open ios"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
@@ -19,5 +22,11 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0"
   }
 }

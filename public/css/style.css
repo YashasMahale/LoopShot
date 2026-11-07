@@ -1790,3 +1790,10 @@ body {
 .pw-rules li.ok::before {
   content: '✓';
 }
+
+/* Inside the Android/iOS app: payments go through the stores, so the
+   web-only Support Creator options (UPI, Ko-fi, card checkout) are hidden. */
+.is-app #btn-support-creator,
+.is-app #modal-support-creator {
+  display: none !important;
+}

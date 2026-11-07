@@ -103,6 +103,7 @@
   const loginError = document.getElementById('auth-error-login');
   const registerError = document.getElementById('auth-error-register');
   const btnLogout = document.getElementById('btn-logout');
+  const btnDeleteAccount = document.getElementById('btn-delete-account');
 
   // Auth Modal Tab switching
   tabLogin.addEventListener('click', () => {
@@ -138,7 +139,7 @@
       // Check for supporter status
       let isSupporter = false;
       try {
-        const res = await fetch('/api/auth/me', {
+        const res = await fetch(API_BASE + '/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -155,6 +156,7 @@
       elUserAvatar.style.color = '#16121f';
       btnLink.style.display = 'none';
       btnLogout.style.display = 'flex';
+      if (btnDeleteAccount) btnDeleteAccount.style.display = 'flex';
     } else {
       elUserStatus.textContent = 'GUEST ACCOUNT';
       elUserAvatar.textContent = '?';
@@ -162,6 +164,7 @@
       elUserAvatar.style.color = '';
       btnLink.style.display = 'flex';
       btnLogout.style.display = 'none';
+      if (btnDeleteAccount) btnDeleteAccount.style.display = 'none';
     }
     
     elUserAvatar.style.display = 'flex';
@@ -218,7 +221,7 @@
     lbList.innerHTML = '<div class="leaderboard-loading">Loading top rankings...</div>';
 
     try {
-      const res = await fetch('/api/leaderboard');
+      const res = await fetch(API_BASE + '/api/leaderboard');
       if (res.ok) {
         cachedLeaderboardData = await res.json();
         renderLeaderboard(activeLeaderboardMode);
@@ -368,7 +371,7 @@
       if (checkoutBtnText) checkoutBtnText.textContent = 'CONNECTING TO CHECKOUT...';
 
       try {
-        const res = await fetch('/api/create-checkout-session', {
+        const res = await fetch(API_BASE + '/api/create-checkout-session', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -423,7 +426,7 @@
   }
 
   async function fetchUpiLink(amount) {
-    const res = await fetch(`/api/support/upi-link?amount=${amount}`);
+    const res = await fetch(API_BASE + `/api/support/upi-link?amount=${amount}`);
     if (!res.ok) throw new Error('Could not build UPI link');
     return (await res.json()).link;
   }
@@ -437,7 +440,7 @@
     }
     upiAppBtn && upiAppBtn.classList.remove('disabled');
     if (upiAppBtnText) upiAppBtnText.textContent = `PAY ₹${amt} WITH UPI APP`;
-    if (upiQrImg) upiQrImg.src = `/api/support/upi-qr.svg?amount=${amt}`;
+    if (upiQrImg) upiQrImg.src = API_BASE + `/api/support/upi-qr.svg?amount=${amt}`;
     clearTimeout(upiLinkTimer);
     upiLinkTimer = setTimeout(async () => {
       try {
@@ -502,7 +505,7 @@
   // Load support configuration (UPI, Ko-fi, card checkout availability)
   (async () => {
     try {
-      const res = await fetch('/api/support/config');
+      const res = await fetch(API_BASE + '/api/support/config');
       const cfg = await res.json();
       if (upiMaskedId && cfg.upi && cfg.upi.maskedId) upiMaskedId.textContent = cfg.upi.maskedId;
       const kofiBox = document.getElementById('kofi-box');
@@ -585,7 +588,7 @@
     try {
       const pending = JSON.parse(pendingRaw);
       if (pending && pending.score > 0) {
-        const res = await fetch('/api/scores', {
+        const res = await fetch(API_BASE + '/api/scores', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -613,7 +616,7 @@
     const password = loginPasswordInput.value;
     
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(API_BASE + '/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -669,7 +672,7 @@
     if (!checks.special) return showRegisterError('Password needs at least one special character');
     
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(API_BASE + '/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, username, password })
@@ -711,7 +714,7 @@
         return;
       }
       try {
-        const res = await fetch('/api/auth/email', {
+        const res = await fetch(API_BASE + '/api/auth/email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('ls_token')}` },
           body: JSON.stringify({ email })
@@ -741,12 +744,49 @@
     }
   });
 
+  const clearLocalAccount = () => {
+    localStorage.removeItem('ls_token');
+    localStorage.removeItem('ls_user');
+    localStorage.setItem('ls_best_easy', '0');
+    localStorage.setItem('ls_best_hard', '0');
+    localStorage.setItem('ls_best_nightmare', '0');
+    localStorage.setItem('ls_best', '0');
+  };
+
+  // Permanently delete the account (App Store guideline 5.1.1(v))
+  if (btnDeleteAccount) {
+    btnDeleteAccount.addEventListener('click', async () => {
+      const token = localStorage.getItem('ls_token');
+      if (!token) return;
+      if (!confirm('Delete your account permanently? Your username, email and saved scores will be erased. This cannot be undone.')) return;
+      const password = prompt('Enter your password to confirm:');
+      if (!password) return;
+      try {
+        const res = await fetch(API_BASE + '/api/auth/account', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.error || 'Could not delete account. Please try again.');
+          return;
+        }
+        clearLocalAccount();
+        updateUI();
+        alert('Your account has been deleted.');
+      } catch (e) {
+        alert('Could not reach the server. Please check your connection and try again.');
+      }
+    });
+  }
+
   // Check token session on load
   const checkSession = async () => {
     const token = localStorage.getItem('ls_token');
     if (!token) return;
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(API_BASE + '/api/auth/me', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -859,7 +899,7 @@
   // Real-time Global High Scores Polling (Numeric score only, no usernames in brackets)
   const fetchGlobalScores = async () => {
     try {
-      const res = await fetch('/api/scores');
+      const res = await fetch(API_BASE + '/api/scores');
       if (!res.ok) throw new Error("Failed to load scores");
       const scores = await res.json();
       

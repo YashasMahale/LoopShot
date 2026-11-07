@@ -74,6 +74,11 @@
         LOG OUT
       </button>
 
+      <!-- Delete account (shown only when logged in; required by the App Store) -->
+      <button class="menu-btn" id="btn-delete-account" style="display: none; background: transparent; border-color: rgba(255, 90, 78, 0.25); color: rgba(255, 90, 78, 0.8); font-size: 0.8em;">
+        DELETE ACCOUNT
+      </button>
+
       <!-- Leaderboard -->
       <button class="menu-btn" id="btn-leaderboard" style="background: rgba(0, 240, 255, 0.12); border-color: rgba(0, 240, 255, 0.35); color: #00f0ff;">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
@@ -283,7 +288,7 @@
       
       <div class="mode-options">
         <!-- Easy Mode -->
-        <button class="mode-card easy" onclick="location.href='/play?mode=easy'">
+        <button class="mode-card easy" onclick="location.href='/game.html?mode=easy'">
           <div class="mode-info">
             <span class="mode-title">Easy Mode</span>
             <span class="mode-desc">Slow speed, relaxed progression.</span>
@@ -295,7 +300,7 @@
         </button>
  
         <!-- Hard Mode -->
-        <button class="mode-card hard" onclick="location.href='/play?mode=hard'">
+        <button class="mode-card hard" onclick="location.href='/game.html?mode=hard'">
           <div class="mode-info">
             <span class="mode-title">Hard Mode</span>
             <span class="mode-desc">Faster starts, standard pacing.</span>
@@ -307,7 +312,7 @@
         </button>
  
         <!-- Nightmare Mode -->
-        <button class="mode-card nightmare" onclick="location.href='/play?mode=nightmare'">
+        <button class="mode-card nightmare" onclick="location.href='/game.html?mode=nightmare'">
           <div class="mode-info">
             <span class="mode-title">Nightmare Mode</span>
             <span class="mode-desc">Double speed, vanishing targets.</span>
@@ -495,6 +500,7 @@
 
   <!-- Custom Authentication Client Scripts loaded via menu.js -->
 
+  <script src="/js/config.js"></script>
   <script src="/js/menu.js"></script>
 </body>
 

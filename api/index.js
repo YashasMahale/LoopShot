@@ -162,6 +162,23 @@ function getBaseUrl(req) {
   return 'http://localhost:3000';
 }
 
+// CORS for the Android/iOS apps: their pages are served from the device
+// (https://localhost on Android, capacitor://localhost on iOS), so they call
+// this API cross-origin. Auth uses a Bearer token, not cookies.
+const APP_ORIGINS = new Set(['capacitor://localhost', 'https://localhost', 'http://localhost', 'ionic://localhost']);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && APP_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  next();
+});
+
 // Middleware: Use raw body for Stripe & Lemon Squeezy Webhooks, JSON for other routes
 app.use((req, res, next) => {
   const url = req.originalUrl || req.url;
@@ -722,6 +739,47 @@ app.post('/api/auth/email', async (req, res) => {
   } catch (e) {
     console.error('Add email error:', e);
     res.status(500).json({ error: 'Could not save email. Please try again.' });
+  }
+});
+
+// Permanently delete the logged-in user's account (required by the App Store).
+// The password is re-checked so a stolen/left-open session can't wipe an account.
+app.delete('/api/auth/account', async (req, res) => {
+  try {
+    const authUser = getOptionalUser(req);
+    if (!authUser) return res.status(401).json({ error: 'Please log in first' });
+    const password = (req.body || {}).password;
+    if (typeof password !== 'string' || !password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+    const username = authUser.username;
+
+    if (isDatabaseConfigured()) {
+      const { db } = await connectToDatabase();
+      const users = db.collection('users');
+      const user = await users.findOne({ _id: username });
+      if (!user) return res.status(404).json({ error: 'Account not found' });
+      if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+        return res.status(400).json({ error: 'Incorrect password' });
+      }
+      await users.deleteOne({ _id: username });
+      // Keep global-best scores but drop the deleted player's name from them
+      await db.collection('scores').updateMany({ username }, { $set: { username: 'Guest' } });
+    } else {
+      const user = global.localUsers && global.localUsers[username];
+      if (!user) return res.status(404).json({ error: 'Account not found' });
+      if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+        return res.status(400).json({ error: 'Incorrect password' });
+      }
+      delete global.localUsers[username];
+    }
+    Object.keys(globalScores).forEach(mode => {
+      if (globalScores[mode] && globalScores[mode].username === username) globalScores[mode].username = 'Guest';
+    });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Delete account error:', e);
+    res.status(500).json({ error: 'Could not delete account. Please try again.' });
   }
 });
 
