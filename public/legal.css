@@ -1,0 +1,29 @@
+@font-face { font-family: 'Bungee'; font-weight: 400; font-display: swap; src: url('/fonts/bungee-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-weight: 400; font-display: swap; src: url('/fonts/outfit-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-weight: 800; font-display: swap; src: url('/fonts/outfit-latin-800-normal.woff2') format('woff2'); }
+:root { --bg: #16121f; --card: #221c30; --text: #f4f1fa; --muted: #b7b0c7; --accent: #ffd166; --danger: #ff7a70; --line: rgba(255,255,255,.12); }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 400 16px/1.65 'Outfit', system-ui, sans-serif;
+  padding: max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+}
+main { max-width: 720px; margin: 0 auto; }
+.back { display: inline-block; color: var(--muted); text-decoration: none; font-weight: 800; font-size: 14px; padding: 10px 0; }
+h1 { font-family: 'Bungee', sans-serif; font-weight: 400; font-size: clamp(28px, 7vw, 40px); line-height: 1.1; margin: 12px 0 4px; }
+h2 { font-size: 19px; font-weight: 800; margin: 32px 0 6px; color: var(--accent); }
+p, li { color: var(--text); }
+.muted { color: var(--muted); font-size: 14px; }
+a { color: var(--accent); }
+ul { padding-left: 22px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 800; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; margin: 16px 0; }
+label { display: block; font-weight: 800; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+input { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: #0f0c16; color: var(--text); font: inherit; }
+button { margin-top: 18px; width: 100%; padding: 15px; border-radius: 14px; border: none; background: var(--danger); color: #16121f; font: 800 16px 'Outfit', sans-serif; letter-spacing: .04em; cursor: pointer; }
+button:disabled { opacity: .5; }
+.msg { margin-top: 14px; font-weight: 800; }
+.msg.ok { color: #7be0a0; } .msg.err { color: var(--danger); }

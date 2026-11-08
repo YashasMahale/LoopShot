@@ -348,6 +348,14 @@ app.get('/play', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/game.html'));
 });
 
+// Clean URLs for the store listings (privacy policy + account deletion)
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/privacy.html'));
+});
+app.get(['/delete-account', '/account/delete'], (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/delete-account.html'));
+});
+
 // GET high scores
 app.get('/api/scores', async (req, res) => {
   try {

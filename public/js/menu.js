@@ -57,7 +57,6 @@
   const modalHowToPlay = document.getElementById('modal-how-to-play');
   const modalSettings = document.getElementById('modal-settings');
   const modalCredits = document.getElementById('modal-credits');
-  const modalModeSelect = document.getElementById('modal-mode-select');
 
   // Modal Triggers
   const btnLink = document.getElementById('btn-link-account');
@@ -155,16 +154,19 @@
       elUserAvatar.style.background = isSupporter ? '#ffd700' : '#ffd166';
       elUserAvatar.style.color = '#16121f';
       btnLink.style.display = 'none';
-      btnLogout.style.display = 'flex';
-      if (btnDeleteAccount) btnDeleteAccount.style.display = 'flex';
+      btnLogout.style.display = 'block';
+      if (btnDeleteAccount) btnDeleteAccount.style.display = 'block';
+      if (accountSection) accountSection.style.display = 'block';
+      if (accountName) accountName.textContent = 'Signed in as ' + username;
     } else {
       elUserStatus.textContent = 'GUEST ACCOUNT';
       elUserAvatar.textContent = '?';
       elUserAvatar.style.background = '';
       elUserAvatar.style.color = '';
-      btnLink.style.display = 'flex';
+      btnLink.style.display = 'block';
       btnLogout.style.display = 'none';
       if (btnDeleteAccount) btnDeleteAccount.style.display = 'none';
+      if (accountSection) accountSection.style.display = 'none';
     }
     
     elUserAvatar.style.display = 'flex';
@@ -183,6 +185,8 @@
     if (elBestEasy) elBestEasy.textContent = getBestMode('easy');
     if (elBestHard) elBestHard.textContent = getBestMode('hard');
     if (elBestNightmare) elBestNightmare.textContent = getBestMode('nightmare');
+
+    renderProgress();
   };
 
   // Modal open/close actions
@@ -196,7 +200,130 @@
     playTone(330, 0.05, 'square', 0.06);
   };
 
-  btnStart.addEventListener('click', () => openModal(modalModeSelect));
+  // ---------- Mode picker + one-tap play ----------
+  const accountSection = document.getElementById('account-section');
+  const accountName = document.getElementById('settings-account-name');
+  let selectedMode = window.LS ? LS.lastMode() : 'easy';
+  const modeSegs = document.querySelectorAll('.mode-seg');
+  const playModeLabel = document.getElementById('play-mode-label');
+  const MODE_HUES = { easy: 8, hard: 222, nightmare: 290 };
+  const selectMode = (m, withSound) => {
+    selectedMode = m;
+    if (window.LS) LS.setLastMode(m);
+    modeSegs.forEach(b => {
+      const on = b.dataset.mode === m;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    if (playModeLabel) playModeLabel.textContent = m.toUpperCase();
+    document.body.style.background = `hsl(${MODE_HUES[m]}, 72%, 54%)`;
+    if (withSound) { playTone(m === 'easy' ? 523 : m === 'hard' ? 659 : 784, 0.05, 'square', 0.06); if (window.LS) LS.haptic('select'); }
+  };
+  modeSegs.forEach(b => b.addEventListener('click', () => selectMode(b.dataset.mode, true)));
+
+  btnStart.addEventListener('click', () => {
+    if (window.LS) LS.haptic('medium');
+    btnStart.classList.add('launch');
+    setTimeout(() => { location.href = '/game.html?mode=' + selectedMode; }, 140);
+  });
+  // Coming back with the browser's back button restores this page from cache
+  window.addEventListener('pageshow', () => { btnStart.classList.remove('launch'); renderProgress(); });
+
+  // ---------- Level / streak / missions ----------
+  const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function renderProgress() {
+    if (!window.LS) return;
+    const li = LS.levelInfo();
+    const elLvl = document.getElementById('hero-level');
+    const elStreak = document.getElementById('hero-streak');
+    const chipStreak = document.getElementById('chip-streak');
+    const fill = document.getElementById('menu-xp-fill');
+    const xpText = document.getElementById('menu-xp-text');
+    if (elLvl) elLvl.textContent = li.level;
+    if (fill) fill.style.width = (li.pct * 100) + '%';
+    if (xpText) xpText.textContent = `LV ${li.level} · ${li.into}/${li.need} XP`;
+    const streak = LS.streak();
+    if (elStreak) elStreak.textContent = streak;
+    if (chipStreak) {
+      chipStreak.classList.toggle('cold', streak === 0 || !LS.playedToday());
+      chipStreak.title = LS.playedToday()
+        ? `${streak}-day streak — come back tomorrow to keep it going`
+        : (streak > 0 ? `Play today to keep your ${streak}-day streak!` : 'Play every day to build a streak');
+    }
+
+    const list = document.getElementById('missions-list');
+    if (list) {
+      const ms = LS.missions();
+      list.innerHTML = ms.map(m => `
+        <div class="mission ${m.done ? 'done' : ''}">
+          <span class="mission-check">${m.done ? '✓' : ''}</span>
+          <span class="mission-text">${esc(m.text)}</span>
+          <span class="mission-prog">${m.done ? '+30 XP' : `${m.progress}/${m.goal}`}</span>
+          <span class="mission-bar"><i style="width:${Math.round(m.progress / m.goal * 100)}%"></i></span>
+        </div>`).join('');
+      const doneCount = ms.filter(m => m.done).length;
+      const reset = document.getElementById('missions-reset');
+      if (reset) reset.textContent = doneCount === ms.length ? 'all done — new ones tomorrow' : `${doneCount}/${ms.length} done · +50 XP bonus for all`;
+    }
+
+    const newDot = document.getElementById('skins-new');
+    if (newDot) newDot.hidden = !(li.level > (LS.get().seenLevel || 1) && LS.SKINS.some(s => s.level > (LS.get().seenLevel || 1) && s.level <= li.level));
+    if (ambient) ambient.skin = LS.skin();
+  }
+
+  // ---------- Balls (skins) ----------
+  const modalSkins = document.getElementById('modal-skins');
+  const skinsGrid = document.getElementById('skins-grid');
+  const ballStyle = (s) => {
+    const bg = s.trail === 'rainbow'
+      ? 'conic-gradient(from 0deg, #ff5a8a, #ffd166, #7be0a0, #00f0ff, #b388ff, #ff5a8a)'
+      : s.ball;
+    const glow = s.glow ? `0 0 18px ${s.glow}` : '0 4px 10px rgba(0,0,0,.3)';
+    const ring = s.ring ? ', inset 0 0 0 3px #fff' : '';
+    return `background:${bg};box-shadow:${glow}${ring}`;
+  };
+  function renderSkins() {
+    if (!window.LS || !skinsGrid) return;
+    const cur = LS.skin().id;
+    skinsGrid.innerHTML = LS.SKINS.map(s => {
+      const open = LS.isUnlocked(s);
+      return `<button type="button" class="skin ${open ? '' : 'locked'} ${s.id === cur ? 'selected' : ''}" data-skin="${s.id}" ${open ? '' : 'aria-disabled="true"'}>
+        <span class="skin-ball" style="${ballStyle(s)}"></span>
+        <span class="skin-name">${esc(s.name)}</span>
+        <span class="skin-req">${open ? (s.id === cur ? 'EQUIPPED' : 'TAP TO USE') : '🔒 LEVEL ' + s.level}</span>
+      </button>`;
+    }).join('');
+  }
+  if (skinsGrid) skinsGrid.addEventListener('click', (e) => {
+    const b = e.target.closest('.skin');
+    if (!b) return;
+    const s = LS.SKINS.find(x => x.id === b.dataset.skin);
+    if (!LS.isUnlocked(s)) {
+      b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope');
+      playTone(180, 0.08, 'square', 0.06); LS.haptic('error');
+      return;
+    }
+    LS.setSkin(s.id);
+    playTone(784, 0.06, 'square', 0.07); LS.haptic('select');
+    renderSkins(); renderProgress();
+  });
+  const btnSkins = document.getElementById('btn-skins');
+  if (btnSkins) btnSkins.addEventListener('click', () => { renderSkins(); openModal(modalSkins); if (window.LS) { LS.markLevelSeen(); renderProgress(); } });
+  const chipLevel = document.getElementById('chip-level');
+  if (chipLevel) chipLevel.addEventListener('click', () => btnSkins && btnSkins.click());
+
+  // ---------- Vibration toggle ----------
+  const toggleHaptics = document.getElementById('toggle-haptics');
+  const renderHaptics = () => {
+    if (!toggleHaptics || !window.LS) return;
+    const on = LS.hapticsOn();
+    toggleHaptics.classList.toggle('on', on);
+    toggleHaptics.setAttribute('aria-checked', on ? 'true' : 'false');
+  };
+  if (toggleHaptics) toggleHaptics.addEventListener('click', () => {
+    LS.setHaptics(!LS.hapticsOn()); renderHaptics(); LS.haptic('medium');
+  });
+  renderHaptics();
 
   btnLink.addEventListener('click', () => {
     // Open custom Login/Register Modal
@@ -830,6 +957,9 @@
   const elTitleContainer = document.getElementById('menu-title-container');
   let W = 0, H = 0, DPR = 1, R = 0, CX = 0, CY = 0;
   let angle = -Math.PI / 2;
+  var ambient = { skin: window.LS ? LS.skin() : null };
+  let zone = Math.PI * 0.25, zoneHit = 0;
+  const trail = [];
 
   const updateTitlePosition = () => {
     if (elTitleContainer) {
@@ -848,53 +978,74 @@
     cv.style.height = H + 'px';
     cx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-    // Dynamic split screen alignment
     if (W >= 768) {
       CX = 380 + (W - 380) * 0.5;
       CY = H / 2;
       R = Math.min(W - 380, H) * 0.32;
     } else {
+      // Hero area is the top ~30% of the screen on phones
+      const hero = Math.max(170, H * 0.3);
       CX = W / 2;
-      CY = H * 0.26;
-      R = Math.min(W, H * 0.52) * 0.3;
+      CY = hero * 0.55;
+      R = Math.min(W * 0.5, hero * 0.8) * 0.5;
     }
-    
+    document.documentElement.style.setProperty('--hero-r', R + 'px');
     updateTitlePosition();
   };
   window.addEventListener('resize', resize);
   resize();
 
+  const norm = (a) => { a %= Math.PI * 2; return a < 0 ? a + Math.PI * 2 : a; };
   let last = performance.now();
   const frame = (now) => {
     const dt = Math.min((now - last) / 1000, 0.033);
     last = now;
 
-    // Slow spinning menu loop
-    angle = (angle + 1.2 * dt) % (Math.PI * 2);
+    // The demo ball "plays itself": it hits the mark and the mark jumps on
+    angle = norm(angle + 1.5 * dt);
+    let d = norm(zone - angle);
+    if (d > Math.PI) d -= Math.PI * 2;
+    if (Math.abs(d) < 0.03) { zoneHit = 1; zone = norm(angle + 1.6 + Math.random() * 2.4); }
+    zoneHit = Math.max(0, zoneHit - dt * 3);
 
     cx.clearRect(0, 0, W, H);
-    
-    // Ambient ring
-    const lw = Math.max(10, R * 0.085);
-    cx.globalAlpha = 0.5;
+    const lw = Math.max(8, R * 0.085);
+    const sk = ambient.skin || { ball: '#fff', trail: '#ffffff', glow: null };
+
     cx.beginPath();
-    cx.arc(CX, CY, R, 0, Math.PI * 2);
-    cx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    cx.arc(CX, CY, R + zoneHit * 10, 0, Math.PI * 2);
+    cx.strokeStyle = `rgba(255,255,255,${0.22 + zoneHit * 0.2})`;
     cx.lineWidth = lw;
     cx.stroke();
 
-    // Ambient ball orbiting
     cx.beginPath();
-    cx.arc(CX + Math.cos(angle) * R, CY + Math.sin(angle) * R, lw * 0.6, 0, Math.PI * 2);
-    cx.fillStyle = '#ffffff';
+    cx.arc(CX, CY, R, zone - 0.35, zone + 0.35);
+    cx.strokeStyle = 'rgba(22,18,31,.55)';
+    cx.lineWidth = lw + 3;
+    cx.lineCap = 'round';
+    cx.stroke();
+
+    trail.push(angle); if (trail.length > 14) trail.shift();
+    trail.forEach((a, i) => {
+      cx.beginPath();
+      cx.arc(CX + Math.cos(a) * R, CY + Math.sin(a) * R, lw * 0.6 * (i / trail.length), 0, Math.PI * 2);
+      cx.fillStyle = sk.trail === 'rainbow' ? `hsla(${(now / 6 + i * 20) % 360} 95% 72% / ${i / trail.length * 0.5})` : `rgba(255,255,255,${i / trail.length * 0.35})`;
+      cx.fill();
+    });
+
+    if (sk.glow) { cx.shadowColor = sk.glow; cx.shadowBlur = 14; }
+    cx.beginPath();
+    cx.arc(CX + Math.cos(angle) * R, CY + Math.sin(angle) * R, lw * 0.62, 0, Math.PI * 2);
+    cx.fillStyle = sk.ball;
     cx.fill();
-    cx.globalAlpha = 1;
+    cx.shadowBlur = 0;
+    if (sk.ring) { cx.lineWidth = 2; cx.strokeStyle = '#fff'; cx.stroke(); }
 
     requestAnimationFrame(frame);
   };
   
-  // Set default body color
-  document.body.style.background = 'hsl(8, 72%, 54%)';
+  // Background follows the selected mode
+  selectMode(selectedMode, false);
   
   // Real-time Global High Scores Polling (Numeric score only, no usernames in brackets)
   const fetchGlobalScores = async () => {

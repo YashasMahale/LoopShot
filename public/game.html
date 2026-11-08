@@ -3,70 +3,94 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#e04e3e">
   <title>LOOPSHOT — tap on the mark</title>
   <meta name="description" content="One tap. One loop. How far can you go?">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/css/style.css">
-  <!-- Vercel Speed Insights -->
-  <script>
-    window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
-  </script>
-  <script defer src="/_vercel/speed-insights/script.js"></script>
-  <!-- Vercel Web Analytics -->
-  <script>
-    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-  </script>
-  <script defer src="/_vercel/insights/script.js"></script>
 </head>
-<body>
-  <!-- Back to Main Menu Button -->
-  <button class="btn-back-menu" onclick="location.href='/index.html'">
+<body class="game-page">
+  <!-- Top bar -->
+  <button class="btn-back-menu" id="btnMenu" type="button" aria-label="Back to menu">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;">
       <line x1="19" y1="12" x2="5" y2="12"></line>
       <polyline points="12 19 5 12 12 5"></polyline>
     </svg>
     Menu
   </button>
+  <button class="btn-sound" id="btnSound" type="button" aria-label="Toggle sound"></button>
 
   <canvas id="game"></canvas>
 
   <!-- Game HUD overlays -->
   <div class="game-hud">
     <div id="game-mode-badge" class="mode-badge-game">EASY</div>
-    <div id="score" style="display:none">0</div>
+    <div id="score">0</div>
+    <div id="hudBest" class="hud-best">BEST 0</div>
     <div id="combo">PERFECT ×0</div>
   </div>
 
   <div id="pop"></div>
+  <div id="floaters"></div>
+
+  <!-- Ready screen (first run only) -->
+  <div class="ready-screen" id="ready">
+    <div class="ready-tap">TAP TO START</div>
+    <div class="ready-sub" id="readySub">Tap when the ball crosses the dark arc</div>
+    <div class="ready-mission" id="readyMission"></div>
+  </div>
 
   <!-- Game Over Screen -->
-  <div class="screen hidden" id="over" style="display:none">
-    <div class="stat-label">score</div>
-    <div class="big-num" id="finalScore">0</div>
-    <div style="display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 10px 0;">
-      <div class="best-chip" id="bestChip">BEST 0</div>
-      <div class="best-chip global-best-chip" id="globalBestChip" style="background: rgba(255, 209, 102, 0.12); border: 1px solid rgba(255, 209, 102, 0.4); color: #ffd166;">GLOBAL 0</div>
-    </div>
-    <div class="close-call" id="closeCall" style="display:none">SO CLOSE — you were a hair off!</div>
-    
-    <!-- Guest Score Warning Card -->
-    <div class="guest-score-card" id="guestScoreCard" style="display:none;">
-      <div class="guest-card-header">
-        <span class="guest-card-icon">⚠️</span>
-        <span class="guest-card-title">SCORE NOT SAVED</span>
+  <div class="screen over-screen hidden" id="over" style="display:none">
+    <div class="miss-label" id="missLabel">TOO EARLY</div>
+    <div class="over-card">
+      <div class="stat-label">score</div>
+      <div class="big-num" id="finalScore">0</div>
+      <div class="over-chips">
+        <div class="best-chip" id="bestChip">BEST 0</div>
+        <div class="best-chip global-best-chip" id="globalBestChip">GLOBAL 0</div>
       </div>
-      <p class="guest-card-desc">You are playing as a <strong>Guest</strong>. Log in to save your score to your account and the leaderboard!</p>
-      <div class="guest-card-actions">
-        <button type="button" class="btn-guest-login" id="btnGuestLogin">LOG IN TO SAVE</button>
-        <button type="button" class="btn-guest-dismiss" id="btnGuestDismiss">CANCEL</button>
-      </div>
-    </div>
+      <div class="close-call" id="closeCall" style="display:none">SO CLOSE!</div>
 
-    <div class="hint" id="retryHint">tap anywhere to retry</div>
+      <div class="run-stats">
+        <div><b id="statPerfects">0</b><span>perfects</span></div>
+        <div><b id="statCombo">0</b><span>best streak</span></div>
+        <div><b id="statLevel">1</b><span>level reached</span></div>
+      </div>
+
+      <div class="xp-block">
+        <div class="xp-row">
+          <span class="xp-level" id="xpLevel">LV 1</span>
+          <span class="xp-gain" id="xpGain">+0 XP</span>
+        </div>
+        <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
+        <div class="xp-events" id="xpEvents"></div>
+      </div>
+
+      <!-- Guest score notice (non-blocking) -->
+      <div class="guest-score-card" id="guestScoreCard" style="display:none;">
+        <span class="guest-card-text">Playing as guest — this score isn't on the leaderboard.</span>
+        <button type="button" class="btn-guest-login" id="btnGuestLogin">LOG IN TO SAVE</button>
+      </div>
+
+      <div class="over-actions">
+        <button type="button" class="btn-retry" id="btnRetry">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
+          PLAY AGAIN
+        </button>
+        <button type="button" class="btn-share" id="btnShare" aria-label="Share score">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+        </button>
+      </div>
+      <div class="hint" id="retryHint">or tap anywhere</div>
+    </div>
   </div>
 
   <div id="flash"></div>
+  <div id="toast" class="toast"></div>
 
   <script src="/js/config.js"></script>
+  <script src="/js/progress.js"></script>
   <script src="/js/game.js"></script>
 </body>
 </html>

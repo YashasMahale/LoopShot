@@ -1,6 +1,6 @@
 {
   "name": "loopshot",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "LoopShot game with Express.js backend for Vercel",
   "main": "api/index.js",
   "scripts": {
@@ -11,6 +11,7 @@
     "app:ios": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/haptics": "^8.0.2",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^3.0.3",
