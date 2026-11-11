@@ -1059,10 +1059,10 @@
     last = now;
 
     // The demo ball "plays itself": it hits the mark and the mark jumps on
-    angle = norm(angle + 1.5 * dt);
+    angle = norm(angle + 2.6 * dt);
     let d = norm(zone - angle);
     if (d > Math.PI) d -= Math.PI * 2;
-    if (Math.abs(d) < 0.03) { zoneHit = 1; zone = norm(angle + 1.6 + Math.random() * 2.4); }
+    if (d < 0.03 && d > -0.5) { zoneHit = 1; zone = norm(angle + 1.6 + Math.random() * 2.4); }
     zoneHit = Math.max(0, zoneHit - dt * 3);
 
     cx.clearRect(0, 0, W, H);

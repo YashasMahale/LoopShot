@@ -33,11 +33,12 @@
   let zoneCenter = Math.PI / 3;  // target arc center
   let zoneHalf = 0.46;           // target arc half-width (rad)
   let perfectStreak = 0;
+  let hits = 0;                  // successful taps this run
   let runPerfects = 0, runBestCombo = 0;
   let passedBest = false;
   let shake = 0;
   let inputLock = 0;             // tiny debounce after state changes
-  let freezeUntil = 0;           // hit-stop on perfect hits
+  let bgFrom = null, bgTo = null, bgK = 1; // world colour crossfade (drawn on the canvas)
   let dyingT = 0;                // slow-motion time after a miss
   let zonePulse = 0;             // zone "breath" after a hit
   let ringPulse = 0;             // ring thickness kick on hit
@@ -45,18 +46,18 @@
   let hideOverTimer = null;
   let skin = window.LS ? LS.skin() : { ball: '#fff', trail: '#fff', glow: null, len: 1 };
 
-  // difficulty curves
+  // difficulty curves, driven by the number of hits (not points), so perfects never make the game harder
   const speedFor = s => {
-    if (mode === 'easy') return Math.min(1.6 + s * 0.02, 3.5);
-    if (mode === 'hard') return Math.min(2.4 + s * 0.08, 5.5);
-    // nightmare: speed doubles every tap
-    return Math.min(1.2 * Math.pow(2, s), 25.0);
+    if (mode === 'easy') return Math.min(2.3 + s * 0.045, 4.6);
+    if (mode === 'hard') return Math.min(3.2 + s * 0.12, 6.2);
+    // nightmare: speed doubles every hit
+    return Math.min(1.8 * Math.pow(2, s), 18.0);
   };
   const zoneFor = s => {
-    if (mode === 'easy') return Math.max(0.5 - s * 0.003, 0.2);
-    if (mode === 'hard') return Math.max(0.42 - s * 0.008, 0.12);
-    // nightmare: target shrinks by 1/8th every tap
-    return Math.max(0.45 * Math.pow(0.875, s), 0.06);
+    if (mode === 'easy') return Math.max(0.5 - s * 0.0045, 0.2);
+    if (mode === 'hard') return Math.max(0.42 - s * 0.011, 0.12);
+    // nightmare: target shrinks by 1/8th every hit
+    return Math.max(0.45 * Math.pow(0.875, s), 0.08);
   };
 
   // level colors (a new world colour every 5 points)
@@ -64,7 +65,9 @@
   const hueFor = s => HUES[Math.floor(s / 5) % HUES.length];
   const setWorldColor = s => {
     const h = hueFor(s);
-    document.body.style.background = `hsl(${h} 72% 54%)`;
+    const next = `hsl(${h} 72% 54%)`;
+    if (next !== bgTo) { bgFrom = bgTo; bgTo = next; bgK = bgFrom ? 0 : 1; }
+    document.body.style.background = next;
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', `hsl(${h} 72% 54%)`);
   };
@@ -290,7 +293,7 @@
   }
 
   function resetRun() {
-    score = 0; perfectStreak = 0; runPerfects = 0; runBestCombo = 0; passedBest = false;
+    score = 0; hits = 0; perfectStreak = 0; runPerfects = 0; runBestCombo = 0; passedBest = false;
     speed = speedFor(0); zoneHalf = zoneFor(0);
     angle = -Math.PI / 2; dir = Math.random() < .5 ? 1 : -1;
     placeZone();
@@ -298,7 +301,8 @@
     best = Math.max(best, loadBest());
     bestAtStart = best;
     skin = window.LS ? LS.skin() : skin;
-    trailHistory.length = 0;
+    trailHistory.length = 0; prevAngle = null;
+    refreshSkinColors();
     elScore.textContent = '0';
     elCombo.classList.remove('on', 'fever');
     document.body.classList.remove('fever');
@@ -448,6 +452,10 @@
     if (state === S.OVER) { startGame(); return; }
 
     // playing: judge the tap
+    // Judge where the ball really is at the moment of the tap, not where the last
+    // drawn frame left it. At high speed the ball can cross the whole target between frames.
+    if (last !== null) angle = norm(angle + dir * speed * Math.min(Math.max(0, (now - last) / 1000), 0.05));
+    last = now;
     const d = angDist(angle, zoneCenter);
     const grace = 0.045; // ball radius forgiveness
     if (d <= zoneHalf + grace) {
@@ -464,7 +472,6 @@
         burst(px, py, '#ffffff', 22, 1.3);
         ripple('rgba(255,255,255,', 1.4);
         floatText('+2', px, py, true);
-        freezeUntil = now + 55;
         ringPulse = 1;
         if (perfectStreak >= 2) {
           elCombo.textContent = (perfectStreak >= 3 ? '🔥 ' : '') + 'Perfect ×' + perfectStreak;
@@ -510,8 +517,9 @@
       }
 
       dir *= -1;
-      speed = speedFor(score);
-      zoneHalf = zoneFor(score);
+      hits++;
+      speed = speedFor(hits);
+      zoneHalf = zoneFor(hits);
       placeZone();
     } else {
       die(signedAhead(angle, zoneCenter));
@@ -549,7 +557,7 @@
     try {
       if (navigator.share) { await navigator.share({ title: 'LoopShot', text, url }); return; }
     } catch (err) { if (err && err.name === 'AbortError') return; }
-    try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Copied — paste it to your friends!'); }
+    try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Copied. Paste it to your friends!'); }
     catch (err) { toast(text); }
   });
 
@@ -561,38 +569,47 @@
 
   // ---------- render ----------
   let last = null;
-  let smoothedDt = null;
   let clock = 0;
 
-  function trailColor(i, n, alpha) {
-    if (skin.trail === 'rainbow') return `hsla(${(clock * 160 + i * 14) % 360} 95% 70% / ${alpha})`;
-    const c = skin.trail;
-    const r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
+  let prevAngle = null;
+  let trailRgb = 'rgba(255,255,255,';
+  function refreshSkinColors() {
+    const c = /^#[0-9a-f]{6}$/i.test(skin.trail) ? skin.trail : '#ffffff';
+    trailRgb = `rgba(${parseInt(c.slice(1, 3), 16)},${parseInt(c.slice(3, 5), 16)},${parseInt(c.slice(5, 7), 16)},`;
   }
+  refreshSkinColors();
 
   function frame(now) {
     if (last === null) { last = now; requestAnimationFrame(frame); return; }
-    const rawDt = Math.min((now - last) / 1000, 0.1);
+    const rawDt = Math.max(0, (now - last) / 1000);
     last = now;
-    smoothedDt = smoothedDt === null ? rawDt : (rawDt > 0 ? smoothedDt * 0.85 + rawDt * 0.15 : smoothedDt);
-    let dt = Math.min(smoothedDt, 0.033);
+    // Real elapsed time, so the ball's speed is identical on 60, 90 and 120 Hz screens.
+    // After a long stall (tab switch, notification) skip ahead by at most 1/20 s.
+    const dt = Math.min(rawDt, 0.05);
     clock += dt;
 
-    const frozen = now < freezeUntil;
-    let ballDt = frozen ? 0 : dt;
+    let ballDt = dt;
     if (state === S.DYING) { dyingT += dt; ballDt = dt * Math.max(0.05, 0.3 - dyingT * 0.5); }
 
     if (state === S.PLAY || state === S.DYING) angle = norm(angle + dir * speed * ballDt);
-    if (state === S.READY) angle = norm(angle + dir * 0.6 * dt);
+    if (state === S.READY) angle = norm(angle + dir * Math.max(1.6, speed * 0.7) * dt);
 
     const sx = shake > 0 ? (Math.random() - .5) * shake : 0;
     const sy = shake > 0 ? (Math.random() - .5) * shake : 0;
     shake = Math.max(0, shake - 60 * dt);
-    zonePulse = Math.max(0, zonePulse - dt * 4);
+    zonePulse = Math.max(0, zonePulse - dt * 7);
     ringPulse = Math.max(0, ringPulse - dt * 5);
 
-    cx.clearRect(0, 0, W, H);
+    // background (crossfades to the next world colour)
+    cx.fillStyle = bgTo || '#e04e3e';
+    cx.fillRect(0, 0, W, H);
+    if (bgK < 1 && bgFrom) {
+      bgK = Math.min(1, bgK + dt * 2.2);
+      cx.globalAlpha = 1 - bgK;
+      cx.fillStyle = bgFrom;
+      cx.fillRect(0, 0, W, H);
+      cx.globalAlpha = 1;
+    }
     cx.save();
     cx.translate(sx, sy);
 
@@ -637,7 +654,7 @@
     }
 
     // target zone (ink), softly breathing in when it appears
-    const grow = 1 - zonePulse * 0.6;
+    const grow = 1 - zonePulse * 0.35;
     const zh = zoneHalf * grow;
     cx.beginPath();
     cx.arc(CX, CY, trackR, zoneCenter - zh, zoneCenter + zh);
@@ -661,37 +678,43 @@
 
     // ball + motion trail
     const bx = CX + Math.cos(angle) * trackR, by = CY + Math.sin(angle) * trackR;
-    if (state === S.PLAY || state === S.READY) {
-      trailHistory.push({ angle, size: lw * 0.62, alpha: fever ? 0.55 : 0.38 });
-      if (trailHistory.length > 80) trailHistory.shift();
+    if ((state === S.PLAY || state === S.READY) && prevAngle !== null && prevAngle !== angle) {
+      trailHistory.push({ a0: prevAngle, a1: angle, ccw: dir < 0, born: clock });
+      if (trailHistory.length > 120) trailHistory.shift();
     }
-    const fade = 3.5 / ((skin.len || 1) * (fever ? 1.6 : 1));
-    for (let i = trailHistory.length - 1; i >= 0; i--) {
+    prevAngle = angle;
+    const trailLife = 0.22 * (skin.len || 1) * (fever ? 1.5 : 1);
+    const rainbow = skin.trail === 'rainbow' || fever;
+    cx.lineCap = 'round';
+    for (let i = 0; i < trailHistory.length; i++) {
       const t = trailHistory[i];
-      t.alpha -= dt * fade;
-      t.size *= 0.975;
-      if (t.alpha <= 0) { trailHistory.splice(i, 1); continue; }
+      const age = (clock - t.born) / trailLife;
+      if (age >= 1) continue;
+      const k = 1 - age;
       cx.beginPath();
-      cx.arc(CX + Math.cos(t.angle) * trackR, CY + Math.sin(t.angle) * trackR, t.size, 0, Math.PI * 2);
-      cx.fillStyle = fever && skin.trail !== 'rainbow'
-        ? `hsla(${(clock * 200 + i * 10) % 360} 95% 72% / ${t.alpha})`
-        : trailColor(i, trailHistory.length, t.alpha);
-      cx.fill();
+      cx.arc(CX, CY, trackR, t.a0, t.a1, t.ccw);
+      cx.strokeStyle = rainbow ? `hsla(${(clock * 200 + i * 9) % 360} 95% 72% / ${k * 0.6})` : trailRgb + (k * 0.45) + ')';
+      cx.lineWidth = lw * 1.24 * (0.25 + 0.75 * k);
+      cx.stroke();
     }
+    while (trailHistory.length && clock - trailHistory[0].born >= trailLife) trailHistory.shift();
 
     const pulse = skin.pulse ? 1 + 0.08 * Math.sin(clock * 10) : 1;
     const ballR = lw * 0.62 * pulse * (state === S.READY ? 1 + 0.06 * Math.sin(clock * 5) : 1);
     if (skin.glow || fever) {
-      cx.shadowColor = fever ? '#ffffff' : skin.glow;
-      cx.shadowBlur = fever ? 26 : 16;
+      cx.globalAlpha = 0.22;
+      cx.fillStyle = fever ? '#ffffff' : skin.glow;
+      cx.beginPath(); cx.arc(bx, by, ballR * 1.9, 0, Math.PI * 2); cx.fill();
+      cx.beginPath(); cx.arc(bx, by, ballR * 1.45, 0, Math.PI * 2); cx.fill();
+      cx.globalAlpha = 1;
     } else {
-      cx.shadowColor = 'rgba(22,18,31,.35)'; cx.shadowBlur = 8; cx.shadowOffsetY = 3;
+      cx.fillStyle = 'rgba(22,18,31,.22)';
+      cx.beginPath(); cx.arc(bx, by + 3, ballR, 0, Math.PI * 2); cx.fill();
     }
     cx.beginPath();
     cx.arc(bx, by, ballR, 0, Math.PI * 2);
     cx.fillStyle = skin.ball;
     cx.fill();
-    cx.shadowBlur = 0; cx.shadowOffsetY = 0;
     if (skin.ring) {
       cx.lineWidth = 2.5; cx.strokeStyle = '#ffffff'; cx.stroke();
     }
@@ -732,11 +755,20 @@
     cx.globalAlpha = 1;
 
     cx.restore();
+
+    // "on fire" frame around the screen
+    if (fever) {
+      cx.globalAlpha = 0.55 + 0.35 * Math.sin(clock * 9);
+      cx.strokeStyle = '#ffffff';
+      cx.lineWidth = 10;
+      cx.strokeRect(5, 5, W - 10, H - 10);
+      cx.globalAlpha = 1;
+    }
     requestAnimationFrame(frame);
   }
 
   // Test hook for automated play-testing (only with ?debug in the URL)
-  if (urlParams.has('debug')) window.__loopshot = () => ({ state, angle, zoneCenter, zoneHalf, score, d: angDist(angle, zoneCenter) });
+  if (urlParams.has('debug')) window.__loopshot = () => ({ state, angle, zoneCenter, zoneHalf, score, hits, speed, d: angDist(angle, zoneCenter) });
 
   // A brand-new tab gets the "tap to start" screen; retries skip it
   showReady();

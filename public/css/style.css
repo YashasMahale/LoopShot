@@ -56,6 +56,7 @@ input { user-select: text; -webkit-user-select: text; }
 .skip-link:focus { top: 12px; }
 
 #game { position: fixed; inset: 0; display: block; z-index: 1; }
+.game-page { transition: none; }
 
 /* ---------- shared sticker pieces ---------- */
 .sticker {
@@ -580,7 +581,6 @@ input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 
 @keyframes comboBump { 0% { transform: scale(1.25); } 100% { transform: scale(1); } }
 #combo.fever { background: linear-gradient(90deg, #ff5a8a, #ffd166, #7be0a0, #00d0ff, #b388ff, #ff5a8a); background-size: 300% 100%; animation: feverShift 1.2s linear infinite; }
 @keyframes feverShift { to { background-position: 300% 0; } }
-body.fever::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 2; box-shadow: inset 0 0 0 8px var(--paper), inset 0 0 0 12px var(--ink); animation: breathe .8s ease-in-out infinite; }
 
 #pop {
   position: fixed; left: 50%; top: 30%; z-index: 6;
@@ -717,5 +717,4 @@ body.fever::after { content: ''; position: fixed; inset: 0; pointer-events: none
 /* Motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-  body.fever::after { display: none; }
 }

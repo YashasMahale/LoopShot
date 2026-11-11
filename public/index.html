@@ -99,7 +99,7 @@
     </nav>
 
     <footer class="menu-footer">
-      <span>v1.3.0</span>
+      <span>v1.3.1</span>
       <button type="button" class="link-btn" id="btn-credits">Credits</button>
       <a href="/privacy.html">Privacy</a>
     </footer>
@@ -132,7 +132,7 @@
         <button type="button" class="auth-tab" id="tab-register" role="tab" aria-selected="false">Create account</button>
       </div>
 
-      <form id="form-login">
+      <form id="form-login" novalidate>
         <div class="input-group">
           <label for="login-username">Username or email</label>
           <input type="text" id="login-username" required autocomplete="username" autocapitalize="none" spellcheck="false">
@@ -145,7 +145,7 @@
         <button type="submit" class="btn-modal-submit">Sign in</button>
       </form>
 
-      <form id="form-register" hidden>
+      <form id="form-register" novalidate hidden>
         <div class="input-group">
           <label for="register-email">Email</label>
           <input type="email" id="register-email" required autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="you@example.com">
@@ -176,7 +176,7 @@
       <button class="btn-close-modal" data-modal="modal-pick-username" aria-label="Close">&times;</button>
       <h3 id="pick-title">Pick a username</h3>
       <p class="modal-desc">This is the name other players see on the leaderboard. Your email stays private.</p>
-      <form id="form-pick-username">
+      <form id="form-pick-username" novalidate>
         <div class="input-group">
           <label for="pick-username">Username</label>
           <input type="text" id="pick-username" required autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="15">
@@ -194,7 +194,7 @@
       <button class="btn-close-modal" data-modal="modal-add-email" aria-label="Close">&times;</button>
       <h3 id="add-email-title">Add your email</h3>
       <p class="modal-desc">Your account doesn’t have an email yet. Add one so you can recover it.</p>
-      <form id="form-add-email">
+      <form id="form-add-email" novalidate>
         <div class="input-group">
           <label for="add-email-input">Email</label>
           <input type="email" id="add-email-input" required autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="you@example.com">
