@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const Stripe = require('stripe');
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
+const { registerSocialAuth } = require('./social-auth');
 
 // Automatically load local .env / .env.local if present (for local testing)
 ['.env.local', '.env'].forEach(file => {
@@ -144,7 +145,9 @@ function getOptionalUser(req) {
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return null;
   try {
-    return jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    // Only real login tokens carry a username (sign-up tokens don't)
+    return decoded && typeof decoded.username === 'string' && !decoded.typ ? decoded : null;
   } catch (e) {
     return null;
   }
@@ -671,6 +674,9 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // Log in with either username or email
+// Sign in with Google / Apple (switched off until configured; see api/social-auth.js)
+registerSocialAuth(app, { jwt, JWT_SECRET, isDatabaseConfigured, connectToDatabase, ensureUserIndexes, validateUsername });
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const body = req.body || {};
@@ -698,6 +704,9 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
+    if (user && !user.passwordHash && (user.googleSub || user.appleSub)) {
+      return res.status(400).json({ error: `This account uses ${user.googleSub ? 'Google' : 'Apple'} sign-in. Use the "Continue with ${user.googleSub ? 'Google' : 'Apple'}" button.` });
+    }
     if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
       return invalid();
     }
@@ -756,18 +765,22 @@ app.delete('/api/auth/account', async (req, res) => {
   try {
     const authUser = getOptionalUser(req);
     if (!authUser) return res.status(401).json({ error: 'Please log in first' });
-    const password = (req.body || {}).password;
-    if (typeof password !== 'string' || !password) {
-      return res.status(400).json({ error: 'Password is required' });
-    }
+    const body = req.body || {};
+    const password = body.password;
     const username = authUser.username;
+    // Accounts made with Google/Apple have no password: they confirm by typing their username
+    const confirmOk = (user) => user && !user.passwordHash
+      ? (typeof body.confirm === 'string' && body.confirm.trim().toLowerCase() === username)
+      : null;
 
     if (isDatabaseConfigured()) {
       const { db } = await connectToDatabase();
       const users = db.collection('users');
       const user = await users.findOne({ _id: username });
       if (!user) return res.status(404).json({ error: 'Account not found' });
-      if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+      const c = confirmOk(user);
+      if (c === false) return res.status(400).json({ error: 'Type your username exactly to confirm.' });
+      if (c === null && (typeof password !== 'string' || !password || !(await bcrypt.compare(password, user.passwordHash)))) {
         return res.status(400).json({ error: 'Incorrect password' });
       }
       await users.deleteOne({ _id: username });
@@ -776,7 +789,9 @@ app.delete('/api/auth/account', async (req, res) => {
     } else {
       const user = global.localUsers && global.localUsers[username];
       if (!user) return res.status(404).json({ error: 'Account not found' });
-      if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+      const c = confirmOk(user);
+      if (c === false) return res.status(400).json({ error: 'Type your username exactly to confirm.' });
+      if (c === null && (typeof password !== 'string' || !password || !(await bcrypt.compare(password, user.passwordHash)))) {
         return res.status(400).json({ error: 'Incorrect password' });
       }
       delete global.localUsers[username];
@@ -798,7 +813,7 @@ app.get('/api/auth/me', async (req, res) => {
     if (!token) return res.status(401).json({ error: 'No token provided' });
 
     jwt.verify(token, JWT_SECRET, async (err, decoded) => {
-      if (err) return res.status(401).json({ error: 'Invalid or expired token' });
+      if (err || !decoded || typeof decoded.username !== 'string' || decoded.typ) return res.status(401).json({ error: 'Invalid or expired token' });
       
       const cleanUsername = decoded.username;
       if (isDatabaseConfigured()) {
@@ -808,7 +823,7 @@ app.get('/api/auth/me', async (req, res) => {
           const user = await collection.findOne({ _id: cleanUsername });
           if (!user) return res.status(404).json({ error: 'User not found' });
           
-          return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false, hasEmail: Boolean(user.email) });
+          return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false, hasEmail: Boolean(user.email), hasPassword: Boolean(user.passwordHash), google: Boolean(user.googleSub), apple: Boolean(user.appleSub) });
         } catch (dbErr) {
           return res.status(500).json({ error: dbErr.message });
         }
@@ -817,7 +832,7 @@ app.get('/api/auth/me', async (req, res) => {
           return res.status(404).json({ error: 'User not found' });
         }
         const user = global.localUsers[cleanUsername];
-        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false, hasEmail: Boolean(user.email) });
+        return res.json({ username: cleanUsername, bestScores: user.bestScores || { easy: 0, hard: 0, nightmare: 0 }, isSupporter: user.isSupporter || false, hasEmail: Boolean(user.email), hasPassword: Boolean(user.passwordHash), google: Boolean(user.googleSub), apple: Boolean(user.appleSub) });
       }
     });
   } catch (e) {

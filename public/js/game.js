@@ -204,7 +204,7 @@
     globalBestScore = bestObj.score;
     const el = $('globalBestChip');
     if (!el) return;
-    el.textContent = `GLOBAL ${globalBestScore}`;
+    el.textContent = `World ${globalBestScore}`;
     el.classList.toggle('beaten', score > 0 && score >= globalBestScore);
   }
 
@@ -241,10 +241,10 @@
   function updateHudBest() {
     if (!elHudBest) return;
     if (score > bestAtStart && bestAtStart > 0) {
-      elHudBest.textContent = 'NEW BEST';
+      elHudBest.textContent = 'New best!';
       elHudBest.classList.add('beaten');
     } else {
-      elHudBest.textContent = bestAtStart > 0 ? `BEST ${bestAtStart}` : (score > 0 ? 'FIRST RUN' : 'SET A BEST');
+      elHudBest.textContent = bestAtStart > 0 ? `Best ${bestAtStart}` : (score > 0 ? 'First run' : 'Set a best');
       elHudBest.classList.remove('beaten');
     }
   }
@@ -304,7 +304,7 @@
     document.body.classList.remove('fever');
     updateHudBest();
     const badge = $('game-mode-badge');
-    badge.textContent = mode + ' MODE';
+    badge.textContent = mode;
     badge.className = 'mode-badge-game ' + mode;
   }
 
@@ -359,19 +359,19 @@
 
     // Fill the game-over card
     elFinal.textContent = '0';
-    elBest.textContent = (isNewBest && score > 0 ? 'NEW BEST ' : 'BEST ') + best;
+    elBest.textContent = (isNewBest && score > 0 ? 'New best ' : 'Best ') + best;
     elBest.classList.toggle('new', isNewBest && score > 0);
     let closeMsg = '';
     if (!isNewBest && best > 0 && score > 0 && best - score <= 5) closeMsg = `Only ${best - score + 1} away from a new best!`;
-    else if (!isNewBest && nearMiss) closeMsg = 'SO CLOSE — you were a hair off!';
+    else if (!isNewBest && nearMiss) closeMsg = 'So close. You were a hair off.';
     elClose.textContent = closeMsg;
-    elClose.style.display = closeMsg ? 'block' : 'none';
+    elClose.hidden = !closeMsg;
     $('statPerfects').textContent = runPerfects;
     $('statCombo').textContent = runBestCombo;
     $('statLevel').textContent = Math.floor(score / 5) + 1;
 
     const guestCard = $('guestScoreCard');
-    guestCard.style.display = (!token && score > 0) ? 'flex' : 'none';
+    guestCard.hidden = !(!token && score > 0);
 
     elScore.style.display = 'none';
     elHudBest.style.display = 'none';
@@ -408,14 +408,14 @@
   function animateXp(ev) {
     const fill = $('xpFill'), lvl = $('xpLevel'), gain = $('xpGain'), list = $('xpEvents');
     const lines = [];
-    if (ev.streakBonus) lines.push(`🔥 ${ev.streak}-day streak · +${ev.streakBonus} XP`);
-    ev.completed.forEach(t => lines.push(`✓ Mission done: ${t} · +30 XP`));
-    if (ev.allDone) lines.push('★ All daily missions done · +50 XP');
+    if (ev.streakBonus) lines.push(`🔥 ${ev.streak}-day streak: +${ev.streakBonus} XP`);
+    ev.completed.forEach(t => lines.push(`✓ ${t}: +30 XP`));
+    if (ev.allDone) lines.push('★ All of today’s missions: +50 XP');
     ev.newSkins.forEach(s => lines.push(`🎨 New ball unlocked: ${s.name}`));
     list.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
 
     gain.textContent = `+${ev.xp} XP`;
-    lvl.textContent = `LV ${ev.before.level}`;
+    lvl.textContent = `Level ${ev.before.level}`;
     fill.style.transition = 'none';
     fill.style.width = (ev.before.pct * 100) + '%';
     void fill.offsetWidth;
@@ -428,7 +428,7 @@
           fill.style.width = '0%';
           void fill.offsetWidth;
           fill.style.transition = '';
-          lvl.textContent = `LV ${ev.after.level} · LEVEL UP!`;
+          lvl.textContent = `Level ${ev.after.level}. Level up!`;
           lvl.classList.remove('up'); void lvl.offsetWidth; lvl.classList.add('up');
           fill.style.width = (ev.after.pct * 100) + '%';
           sfx.levelUp(); haptic('success');
@@ -467,7 +467,7 @@
         freezeUntil = now + 55;
         ringPulse = 1;
         if (perfectStreak >= 2) {
-          elCombo.textContent = (perfectStreak >= 3 ? '🔥 ' : '') + 'PERFECT ×' + perfectStreak;
+          elCombo.textContent = (perfectStreak >= 3 ? '🔥 ' : '') + 'Perfect ×' + perfectStreak;
           elCombo.classList.add('on');
           elCombo.classList.remove('bump'); void elCombo.offsetWidth; elCombo.classList.add('bump');
         }

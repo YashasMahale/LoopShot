@@ -24,10 +24,10 @@
 
   <!-- Game HUD overlays -->
   <div class="game-hud">
-    <div id="game-mode-badge" class="mode-badge-game">EASY</div>
+    <div id="game-mode-badge" class="mode-badge-game">Easy</div>
     <div id="score">0</div>
-    <div id="hudBest" class="hud-best">BEST 0</div>
-    <div id="combo">PERFECT ×0</div>
+    <div id="hudBest" class="hud-best">Best 0</div>
+    <div id="combo">Perfect ×0</div>
   </div>
 
   <div id="pop"></div>
@@ -44,18 +44,18 @@
   <div class="screen over-screen hidden" id="over" style="display:none">
     <div class="miss-label" id="missLabel">TOO EARLY</div>
     <div class="over-card">
-      <div class="stat-label">score</div>
+      <div class="stat-label">Score</div>
       <div class="big-num" id="finalScore">0</div>
       <div class="over-chips">
-        <div class="best-chip" id="bestChip">BEST 0</div>
-        <div class="best-chip global-best-chip" id="globalBestChip">GLOBAL 0</div>
+        <div class="best-chip" id="bestChip">Best 0</div>
+        <div class="best-chip global-best-chip" id="globalBestChip">World 0</div>
       </div>
-      <div class="close-call" id="closeCall" style="display:none">SO CLOSE!</div>
+      <div class="close-call" id="closeCall" hidden></div>
 
       <div class="run-stats">
-        <div><b id="statPerfects">0</b><span>perfects</span></div>
-        <div><b id="statCombo">0</b><span>best streak</span></div>
-        <div><b id="statLevel">1</b><span>level reached</span></div>
+        <div><b id="statPerfects">0</b><span>Perfects</span></div>
+        <div><b id="statCombo">0</b><span>Best streak</span></div>
+        <div><b id="statLevel">1</b><span>Level reached</span></div>
       </div>
 
       <div class="xp-block">
@@ -68,9 +68,9 @@
       </div>
 
       <!-- Guest score notice (non-blocking) -->
-      <div class="guest-score-card" id="guestScoreCard" style="display:none;">
-        <span class="guest-card-text">Playing as guest — this score isn't on the leaderboard.</span>
-        <button type="button" class="btn-guest-login" id="btnGuestLogin">LOG IN TO SAVE</button>
+      <div class="guest-score-card" id="guestScoreCard" hidden>
+        <span class="guest-card-text">You’re playing as a guest, so this score won’t reach the leaderboard.</span>
+        <button type="button" class="btn-guest-login" id="btnGuestLogin">Sign in to save</button>
       </div>
 
       <div class="over-actions">

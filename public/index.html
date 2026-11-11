@@ -12,265 +12,282 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
 </head>
 
-<body>
-  <!-- Ambient background animation canvas -->
-  <canvas id="game"></canvas>
+<body class="menu-page">
+  <a class="skip-link" href="#options-panel">Skip to menu</a>
+  <!-- The loop: animated ring with the Play button in its centre -->
+  <canvas id="game" aria-hidden="true"></canvas>
+
+  <header class="hero-bar">
+    <button type="button" class="hero-chip" id="chip-level" aria-label="Level and balls">
+      <span class="chip-k">Lv</span><span id="hero-level">1</span>
+    </button>
+    <div class="wordmark" aria-label="LoopShot">LOOPSHOT</div>
+    <div class="hero-chip streak-chip cold" id="chip-streak" title="Play every day to grow your streak">
+      <span class="flame" aria-hidden="true">🔥</span><span id="hero-streak">0</span>
+    </div>
+  </header>
 
   <div class="title-container" id="menu-title-container">
-    <div class="title" id="menu-title">LOOP<br>SHOT</div>
-  </div>
-
-  <!-- Hero chips: level + daily streak -->
-  <div class="hero-chips">
-    <button type="button" class="hero-chip" id="chip-level" aria-label="Your level">
-      <span class="chip-k">LV</span><span id="hero-level">1</span>
+    <button type="button" class="play-disc" id="btn-start" aria-label="Play">
+      <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg>
+      <span class="play-word">Play</span>
+      <span class="play-mode" id="play-mode-label">Easy</span>
     </button>
-    <div class="hero-chip streak-chip" id="chip-streak" title="Play every day to grow your streak">
-      <span class="flame">🔥</span><span id="hero-streak">0</span>
-    </div>
   </div>
 
-  <div id="options-panel">
-    <div class="menu-header">
-      <h1 class="game-logo">LOOPSHOT</h1>
-      <div class="user-profile">
-        <div class="avatar" id="user-avatar">?</div>
-        <div id="clerk-user-button-container" style="display: none;"></div>
-        <div class="user-info">
-          <span class="user-status" id="user-status">GUEST ACCOUNT</span>
-          <div class="xp-mini"><div class="xp-mini-fill" id="menu-xp-fill"></div></div>
-          <span class="user-score"><span id="menu-xp-text">0 / 60 XP</span> · Best <span id="best-score">0</span> · World <span id="global-best-score">0</span></span>
-        </div>
-        <!-- Login / Sign Up -->
-        <button class="pill-btn" id="btn-link-account" type="button">LOG IN</button>
-      </div>
+  <main id="options-panel" tabindex="-1">
+    <h1 class="game-logo">LOOPSHOT</h1>
+
+    <!-- Mode picker -->
+    <div class="mode-switch" role="radiogroup" aria-label="Game mode">
+      <button type="button" class="mode-seg easy" data-mode="easy" role="radio">
+        <span class="seg-name">Easy</span><span class="seg-best">Best <b id="best-easy">0</b></span>
+      </button>
+      <button type="button" class="mode-seg hard" data-mode="hard" role="radio">
+        <span class="seg-name">Hard</span><span class="seg-best">Best <b id="best-hard">0</b></span>
+      </button>
+      <button type="button" class="mode-seg nightmare" data-mode="nightmare" role="radio">
+        <span class="seg-name">Nightmare</span><span class="seg-best">Best <b id="best-nightmare">0</b></span>
+      </button>
     </div>
 
     <!-- Daily missions -->
-    <div class="missions-card" id="missions-card">
+    <section class="missions-card" id="missions-card" aria-labelledby="missions-title">
       <div class="missions-head">
-        <span>DAILY MISSIONS</span>
-        <span class="missions-reset" id="missions-reset">resets at midnight</span>
+        <h2 id="missions-title">Today’s missions</h2>
+        <span class="missions-reset" id="missions-reset">New ones at midnight</span>
       </div>
       <div class="missions-list" id="missions-list"></div>
-    </div>
+    </section>
 
-    <div class="play-block">
-      <!-- Mode picker -->
-      <div class="mode-switch" role="radiogroup" aria-label="Game mode">
-        <button type="button" class="mode-seg easy" data-mode="easy" role="radio">
-          <span class="seg-name">EASY</span><span class="seg-best">BEST <b id="best-easy">0</b></span>
-        </button>
-        <button type="button" class="mode-seg hard" data-mode="hard" role="radio">
-          <span class="seg-name">HARD</span><span class="seg-best">BEST <b id="best-hard">0</b></span>
-        </button>
-        <button type="button" class="mode-seg nightmare" data-mode="nightmare" role="radio">
-          <span class="seg-name">NIGHTMARE</span><span class="seg-best">BEST <b id="best-nightmare">0</b></span>
-        </button>
+    <!-- Player card -->
+    <section class="user-profile" aria-label="Your account">
+      <div class="avatar" id="user-avatar">?</div>
+      <div id="clerk-user-button-container" hidden></div>
+      <div class="user-info">
+        <span class="user-status" id="user-status">Playing as guest</span>
+        <div class="xp-mini" aria-hidden="true"><div class="xp-mini-fill" id="menu-xp-fill"></div></div>
+        <span class="user-score"><span id="menu-xp-text">Level 1</span></span>
+        <span class="user-score user-bests">Best <b id="best-score">0</b> <span class="sep" aria-hidden="true">/</span> World <b id="global-best-score">0</b></span>
       </div>
-
-      <!-- Play Game -->
-      <button class="menu-btn btn-primary btn-play-big" id="btn-start" type="button">
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-        <span>PLAY <small id="play-mode-label">EASY</small></span>
-      </button>
-    </div>
+      <button class="pill-btn" id="btn-link-account" type="button">Sign in</button>
+    </section>
 
     <!-- Secondary actions -->
-    <div class="icon-row">
+    <nav class="icon-row" aria-label="More">
       <button class="icon-btn" id="btn-leaderboard" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.45 1-1 1H7" /><path d="M14 14.66V17c0 .55.45 1 1 1h2" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" /></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.45 1-1 1H7" /><path d="M14 14.66V17c0 .55.45 1 1 1h2" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" /></svg>
         <span>Ranks</span>
       </button>
       <button class="icon-btn" id="btn-skins" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>
         <span>Balls</span>
         <i class="dot-new" id="skins-new" hidden></i>
       </button>
       <button class="icon-btn" id="btn-how-to-play" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
         <span>How to</span>
       </button>
       <button class="icon-btn" id="btn-settings-toggle" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
         <span>Settings</span>
       </button>
       <button class="icon-btn support-icon" id="btn-support-creator" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" /></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" /></svg>
         <span>Support</span>
       </button>
-    </div>
+    </nav>
 
-    <div class="menu-footer">
-      <span>v1.2.0</span> &bull; <button type="button" class="link-btn" id="btn-credits">Credits</button> &bull; <a href="/privacy.html">Privacy</a>
-    </div>
-  </div>
+    <footer class="menu-footer">
+      <span>v1.3.0</span>
+      <button type="button" class="link-btn" id="btn-credits">Credits</button>
+      <a href="/privacy.html">Privacy</a>
+    </footer>
+  </main>
 
-  <!-- Login / Register Modal -->
-  <div class="modal hidden" id="modal-link-account">
+  <!-- Sign in / Create account -->
+  <div class="modal hidden" id="modal-link-account" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <div class="modal-content">
-      <button class="btn-close-modal" data-modal="modal-link-account">&times;</button>
-      
-      <!-- Tabs to switch between Login and Register -->
-      <div class="auth-tabs" style="display: flex; gap: 20px; border-bottom: 2px solid var(--glass-border); margin-bottom: 24px; padding-bottom: 8px;">
-        <span class="auth-tab active" id="tab-login" style="cursor: pointer; font-family: 'Bungee', sans-serif; font-size: 18px; color: var(--paper); border-bottom: 2px solid var(--paper); margin-bottom: -10px; padding-bottom: 8px;">LOG IN</span>
-        <span class="auth-tab" id="tab-register" style="cursor: pointer; font-family: 'Bungee', sans-serif; font-size: 18px; color: rgba(255,255,255,0.4); margin-bottom: -10px; padding-bottom: 8px;">REGISTER</span>
+      <button class="btn-close-modal" data-modal="modal-link-account" aria-label="Close">&times;</button>
+      <h3 id="auth-title">Save your scores</h3>
+      <p class="modal-desc">Sign in to get on the leaderboard and keep your best scores on every device.</p>
+
+      <!-- Google / Apple (shown only when configured on the server) -->
+      <div class="social-auth" id="social-auth" hidden>
+        <button type="button" class="social-btn apple" id="btn-apple" hidden>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.82-.81-3-.79-1.54.02-2.96.9-3.76 2.27-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.24-.02 2.02-1.12 2.77-2.23.88-1.28 1.24-2.52 1.26-2.59-.03-.01-2.41-.92-2.43-3.67zM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.02.61-2.67 1.37-.58.67-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28z"/></svg>
+          Continue with Apple
+        </button>
+        <button type="button" class="social-btn google" id="btn-google" hidden>
+          <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Continue with Google
+        </button>
+        <div class="google-slot" id="google-btn-slot"></div>
+        <div class="social-error" id="social-error" role="alert" hidden></div>
+        <div class="or-divider"><span>or use a LoopShot account</span></div>
       </div>
-      
-      <!-- Login Form -->
+
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab active" id="tab-login" role="tab" aria-selected="true">Sign in</button>
+        <button type="button" class="auth-tab" id="tab-register" role="tab" aria-selected="false">Create account</button>
+      </div>
+
       <form id="form-login">
         <div class="input-group">
-          <label for="login-username">Username or Email</label>
-          <input type="text" id="login-username" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Enter username or email...">
+          <label for="login-username">Username or email</label>
+          <input type="text" id="login-username" required autocomplete="username" autocapitalize="none" spellcheck="false">
         </div>
         <div class="input-group">
           <label for="login-password">Password</label>
-          <input type="password" id="login-password" required autocomplete="current-password" placeholder="Enter password...">
+          <input type="password" id="login-password" required autocomplete="current-password">
         </div>
-        <div id="auth-error-login" style="color: #ff5a4e; font-size: 13px; font-weight: 700; margin-bottom: 12px; display: none;"></div>
-        <button type="submit" class="btn-modal-submit">Log In</button>
+        <div class="form-error" id="auth-error-login" role="alert" hidden></div>
+        <button type="submit" class="btn-modal-submit">Sign in</button>
       </form>
 
-      <!-- Register Form -->
-      <form id="form-register" style="display: none;">
+      <form id="form-register" hidden>
         <div class="input-group">
           <label for="register-email">Email</label>
           <input type="email" id="register-email" required autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="you@example.com">
         </div>
         <div class="input-group">
           <label for="register-username">Username</label>
-          <input type="text" id="register-username" required autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="15" placeholder="Choose a username...">
-          <small class="field-hint">3–15 characters: letters, numbers, _ . or -</small>
+          <input type="text" id="register-username" required autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="15">
+          <small class="field-hint">Shown on the leaderboard. 3–15 letters, numbers, _ . or -</small>
         </div>
         <div class="input-group">
           <label for="register-password">Password</label>
-          <input type="password" id="register-password" required autocomplete="new-password" minlength="8" maxlength="72" placeholder="Choose a password...">
+          <input type="password" id="register-password" required autocomplete="new-password" minlength="8" maxlength="72">
           <ul class="pw-rules" id="pw-rules">
             <li data-rule="len">At least 8 characters</li>
-            <li data-rule="upper">One uppercase letter (A–Z)</li>
-            <li data-rule="special">One special character (! @ # $ …)</li>
+            <li data-rule="upper">One uppercase letter</li>
+            <li data-rule="special">One symbol, like ! or #</li>
           </ul>
         </div>
-        <div id="auth-error-register" style="color: #ff5a4e; font-size: 13px; font-weight: 700; margin-bottom: 12px; display: none;"></div>
-        <button type="submit" class="btn-modal-submit">Create Account</button>
+        <div class="form-error" id="auth-error-register" role="alert" hidden></div>
+        <button type="submit" class="btn-modal-submit">Create account</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Choose a username (first Google / Apple sign-in) -->
+  <div class="modal hidden" id="modal-pick-username" role="dialog" aria-modal="true" aria-labelledby="pick-title">
+    <div class="modal-content">
+      <button class="btn-close-modal" data-modal="modal-pick-username" aria-label="Close">&times;</button>
+      <h3 id="pick-title">Pick a username</h3>
+      <p class="modal-desc">This is the name other players see on the leaderboard. Your email stays private.</p>
+      <form id="form-pick-username">
+        <div class="input-group">
+          <label for="pick-username">Username</label>
+          <input type="text" id="pick-username" required autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="15">
+          <small class="field-hint">3–15 letters, numbers, _ . or -</small>
+        </div>
+        <div class="form-error" id="auth-error-pick" role="alert" hidden></div>
+        <button type="submit" class="btn-modal-submit">Save username</button>
       </form>
     </div>
   </div>
 
   <!-- Add Email Modal (for accounts created before emails were required) -->
-  <div class="modal hidden" id="modal-add-email">
+  <div class="modal hidden" id="modal-add-email" role="dialog" aria-modal="true" aria-labelledby="add-email-title">
     <div class="modal-content">
-      <button class="btn-close-modal" data-modal="modal-add-email">&times;</button>
-      <h3>Add Your Email</h3>
-      <p class="modal-desc">Your account doesn't have an email yet. Add one so your account stays secure.</p>
+      <button class="btn-close-modal" data-modal="modal-add-email" aria-label="Close">&times;</button>
+      <h3 id="add-email-title">Add your email</h3>
+      <p class="modal-desc">Your account doesn’t have an email yet. Add one so you can recover it.</p>
       <form id="form-add-email">
         <div class="input-group">
           <label for="add-email-input">Email</label>
           <input type="email" id="add-email-input" required autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="you@example.com">
         </div>
-        <div id="auth-error-add-email" style="color: #ff5a4e; font-size: 13px; font-weight: 700; margin-bottom: 12px; display: none;"></div>
-        <button type="submit" class="btn-modal-submit">Save Email</button>
+        <div class="form-error" id="auth-error-add-email" role="alert" hidden></div>
+        <button type="submit" class="btn-modal-submit">Save email</button>
       </form>
     </div>
   </div>
 
-  <!-- How to Play Modal -->
-  <div class="modal hidden" id="modal-how-to-play">
+  <!-- How to play -->
+  <div class="modal hidden" id="modal-how-to-play" role="dialog" aria-modal="true" aria-labelledby="how-title">
     <div class="modal-content">
-      <button class="btn-close-modal" data-modal="modal-how-to-play">&times;</button>
-      <h3>How to Play</h3>
-      <div class="instructions-content">
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-text">Wait for the orbiting dot to align with the dark arc mark on the ring.</div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-text">Tap the screen, click, or press <strong>SPACEBAR</strong> at the exact moment of
-            alignment.</div>
-        </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <div class="step-text">Hit the small white dot for a <strong>PERFECT</strong> (+2). Chain 3 perfects to catch fire. A miss ends the run!</div>
-        </div>
-        <div class="step">
-          <div class="step-num">4</div>
-          <div class="step-text">Every run earns XP. Finish daily missions and play every day to level up faster and unlock new balls.</div>
-        </div>
-      </div>
+      <button class="btn-close-modal" data-modal="modal-how-to-play" aria-label="Close">&times;</button>
+      <h3 id="how-title">How to play</h3>
+      <ol class="instructions-content">
+        <li class="step">
+          <span class="step-art art-wait" aria-hidden="true"></span>
+          <span class="step-text">The ball loops around the ring. Watch for the dark arc.</span>
+        </li>
+        <li class="step">
+          <span class="step-art art-tap" aria-hidden="true"></span>
+          <span class="step-text">Tap anywhere (or press <kbd>Space</kbd>) while the ball is inside the arc. Each hit flips its direction.</span>
+        </li>
+        <li class="step">
+          <span class="step-art art-perfect" aria-hidden="true"></span>
+          <span class="step-text">Land on the white dot for a perfect, worth 2 points. Three perfects in a row and you’re on fire.</span>
+        </li>
+        <li class="step">
+          <span class="step-art art-xp" aria-hidden="true"></span>
+          <span class="step-text">Every run earns XP. Missions and a daily streak earn more, and new levels unlock new balls.</span>
+        </li>
+      </ol>
     </div>
   </div>
 
-  <!-- Settings Modal -->
-  <div class="modal hidden" id="modal-settings">
+  <!-- Settings -->
+  <div class="modal hidden" id="modal-settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="modal-content">
-      <button class="btn-close-modal" data-modal="modal-settings">&times;</button>
-      <h3>Settings</h3>
+      <button class="btn-close-modal" data-modal="modal-settings" aria-label="Close">&times;</button>
+      <h3 id="settings-title">Settings</h3>
 
-      <div class="settings-option">
-        <label for="volume-slider">Sound Level</label>
+      <div class="settings-row">
+        <label for="volume-slider">Sound</label>
         <div class="slider-container">
-          <svg viewBox="0 0 24 24" class="slider-icon">
-            <path fill="currentColor"
-              d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
-          </svg>
           <input type="range" id="volume-slider" min="0" max="100" value="50">
           <span class="slider-val" id="volume-value">50%</span>
         </div>
       </div>
 
-      <div class="settings-option">
-        <label>Vibration</label>
-        <button type="button" class="toggle" id="toggle-haptics" role="switch" aria-checked="true"><span></span></button>
+      <div class="settings-row">
+        <span id="haptics-label">Vibration</span>
+        <button type="button" class="toggle" id="toggle-haptics" role="switch" aria-checked="true" aria-labelledby="haptics-label"><span></span></button>
       </div>
 
-      <div class="settings-option" id="account-section" style="display:none;">
-        <label>Account</label>
+      <div class="settings-group" id="account-section" hidden>
+        <h4>Account</h4>
         <div class="settings-account-name" id="settings-account-name"></div>
-        <!-- Logout -->
-        <button class="settings-btn" id="btn-logout" type="button" style="display: none;">LOG OUT</button>
-        <!-- Delete account (shown only when logged in; App Store 5.1.1(v) / Google Play account deletion) -->
-        <button class="settings-btn danger" id="btn-delete-account" type="button" style="display: none;">DELETE ACCOUNT</button>
+        <button class="settings-btn" id="btn-logout" type="button" hidden>Sign out</button>
+        <!-- Delete account (App Store 5.1.1(v) / Google Play account deletion) -->
+        <button class="settings-btn danger" id="btn-delete-account" type="button" hidden>Delete account</button>
       </div>
 
-      <div class="settings-option">
-        <label>Danger Zone</label>
-        <button class="btn-reset-danger" id="btn-reset-score">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path
-              d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6" />
-          </svg>
-          Reset High Scores On This Device
-        </button>
+      <div class="settings-group">
+        <h4>This device</h4>
+        <button class="settings-btn danger" id="btn-reset-score" type="button">Reset best scores on this device</button>
       </div>
 
       <div class="settings-links">
-        <a href="/privacy.html">Privacy Policy</a>
-        <a href="/delete-account.html">Account Deletion</a>
+        <a href="/privacy.html">Privacy policy</a>
+        <a href="/delete-account.html">Account deletion</a>
       </div>
     </div>
   </div>
 
-  <!-- Balls (skins) Modal -->
-  <div class="modal hidden" id="modal-skins">
+  <!-- Balls (skins) -->
+  <div class="modal hidden" id="modal-skins" role="dialog" aria-modal="true" aria-labelledby="skins-title">
     <div class="modal-content">
-      <button class="btn-close-modal" data-modal="modal-skins">&times;</button>
-      <h3>Balls</h3>
-      <p class="modal-desc">Level up by playing to unlock new balls. Missions and daily streaks give bonus XP.</p>
+      <button class="btn-close-modal" data-modal="modal-skins" aria-label="Close">&times;</button>
+      <h3 id="skins-title">Balls</h3>
+      <p class="modal-desc" id="skins-desc">Level up to unlock new balls. Missions and your daily streak give bonus XP.</p>
       <div class="skins-grid" id="skins-grid"></div>
     </div>
   </div>
 
-  <!-- Credits Modal -->
-  <div class="modal hidden" id="modal-credits">
+  <!-- Credits -->
+  <div class="modal hidden" id="modal-credits" role="dialog" aria-modal="true" aria-labelledby="credits-title">
     <div class="modal-content credits-content">
-      <button class="btn-close-modal" data-modal="modal-credits">&times;</button>
-      <div class="credits-badge">CREATOR</div>
-      <h3>Credits</h3>
+      <button class="btn-close-modal" data-modal="modal-credits" aria-label="Close">&times;</button>
+      <h3 id="credits-title">Credits</h3>
       <p class="credits-name">Made by</p>
       <div class="creator-name">Yashas Dinesh Mahale</div>
-      <p class="credits-tagline">Built for no reason</p>
+      <p class="credits-tagline">Built for no reason. Fonts: Bungee and Outfit (SIL Open Font License).</p>
     </div>
   </div>
 
@@ -280,18 +297,18 @@
       <button class="btn-close-modal" data-modal="modal-support-creator">&times;</button>
       <div class="support-header">
         <div class="support-badge-icon">💖</div>
-        <h3>Support Creator</h3>
-        <p class="modal-desc">Fuel LoopShot's development and unlock your exclusive golden <strong>SUPPORTER</strong> badge & profile glow!</p>
+        <h3>Support the game</h3>
+        <p class="modal-desc">Tips keep the servers running. Card tips also give you a gold supporter badge on the leaderboard.</p>
       </div>
 
       <div class="support-tabs" role="tablist">
         <button type="button" class="support-tab active" data-pane="support-pane-upi" role="tab">🇮🇳 UPI</button>
-        <button type="button" class="support-tab" data-pane="support-pane-card" role="tab">🌍 CARD / PAYPAL</button>
+        <button type="button" class="support-tab" data-pane="support-pane-card" role="tab">🌍 Card / PayPal</button>
       </div>
 
       <!-- UPI pane (India: Google Pay, PhonePe, Paytm, BHIM...) -->
       <div class="support-pane" id="support-pane-upi">
-        <div class="support-section-label">CHOOSE AN AMOUNT (₹ INR)</div>
+        <div class="support-section-label">Choose an amount (₹)</div>
         <div class="support-presets">
           <button type="button" class="preset-btn upi-preset-btn" data-amount="49">
             <span class="preset-icon">☕</span>
@@ -299,7 +316,7 @@
             <span class="preset-name">Chai</span>
           </button>
           <button type="button" class="preset-btn upi-preset-btn active popular" data-amount="99">
-            <span class="preset-popular-tag">POPULAR</span>
+            <span class="preset-popular-tag">Popular</span>
             <span class="preset-icon">🍕</span>
             <span class="preset-price">₹99</span>
             <span class="preset-name">Snack</span>
@@ -312,7 +329,7 @@
         </div>
 
         <div class="custom-amount-wrapper">
-          <label for="custom-upi-amount">OR ENTER ANY AMOUNT (₹ INR)</label>
+          <label for="custom-upi-amount">Or enter any amount (₹)</label>
           <div class="custom-amount-input-box">
             <span class="currency-symbol">₹</span>
             <input type="number" id="custom-upi-amount" min="1" max="100000" step="1" value="99" placeholder="99" />
@@ -325,18 +342,18 @@
           <div class="upi-id-row">
             <span>UPI ID:</span>
             <code id="upi-masked-id">—</code>
-            <button type="button" class="upi-copy-btn" id="btn-copy-upi">COPY</button>
+            <button type="button" class="upi-copy-btn" id="btn-copy-upi">Copy</button>
           </div>
         </div>
 
         <a id="btn-open-upi-app" class="btn-primary support-checkout-btn upi-app-btn" href="#">
-          <span id="upi-app-btn-text">PAY ₹99 WITH UPI APP</span>
+          <span id="upi-app-btn-text">Pay ₹99 in a UPI app</span>
         </a>
 
-        <button type="button" id="btn-upi-paid" class="upi-paid-btn">I'VE PAID — THANK YOU! 💛</button>
+        <button type="button" id="btn-upi-paid" class="upi-paid-btn">I’ve paid</button>
 
         <div class="stripe-secure-note">
-          <span>Goes directly to the creator via UPI. 0% fees. UPI tips don't unlock the automatic badge.</span>
+          <span>Goes straight to the creator with no fees. UPI tips don’t add the badge automatically.</span>
         </div>
       </div>
 
@@ -344,13 +361,13 @@
       <div class="support-pane hidden" id="support-pane-card">
       <div id="kofi-box" class="kofi-box hidden">
         <a id="btn-kofi" class="btn-primary support-checkout-btn kofi-btn" href="#" target="_blank" rel="noopener">
-          <span>☕ SUPPORT ON KO-FI (PAYPAL / CARD)</span>
+          <span>Support on Ko-fi (PayPal or card)</span>
         </a>
         <div class="stripe-secure-note"><span>Opens Ko-fi in a new tab. Pay with PayPal or any debit/credit card.</span></div>
       </div>
 
       <div id="card-checkout-box">
-      <div class="support-section-label">CHOOSE YOUR CONTRIBUTION</div>
+      <div class="support-section-label">Choose an amount ($)</div>
       <div class="support-presets">
         <button type="button" class="preset-btn active" data-amount="2.99">
           <span class="preset-icon">☕</span>
@@ -358,7 +375,7 @@
           <span class="preset-name">Coffee</span>
         </button>
         <button type="button" class="preset-btn popular" data-amount="5.99">
-          <span class="preset-popular-tag">POPULAR</span>
+          <span class="preset-popular-tag">Popular</span>
           <span class="preset-icon">🍕</span>
           <span class="preset-price">$5.99</span>
           <span class="preset-name">Pizza</span>
@@ -371,7 +388,7 @@
       </div>
 
       <div class="custom-amount-wrapper">
-        <label for="custom-support-amount">OR ENTER ANY CUSTOM AMOUNT ($ USD)</label>
+        <label for="custom-support-amount">Or enter any amount ($)</label>
         <div class="custom-amount-input-box">
           <span class="currency-symbol">$</span>
           <input type="number" id="custom-support-amount" min="1.00" max="1000.00" step="0.01" value="2.99" placeholder="2.99" />
@@ -381,15 +398,15 @@
       <div class="support-perks-box">
         <div class="perk-item">
           <span class="perk-check">✓</span>
-          <span>Golden <strong>SUPPORTER</strong> title & avatar badge</span>
+          <span>Gold supporter badge on your profile</span>
         </div>
         <div class="perk-item">
           <span class="perk-check">✓</span>
-          <span>Permanent supporter recognition across high scores</span>
+          <span>Supporter tag on the leaderboard</span>
         </div>
         <div class="perk-item">
           <span class="perk-check">✓</span>
-          <span>Directly keeps game servers running & updates coming</span>
+          <span>Keeps the servers running and updates coming</span>
         </div>
       </div>
 
@@ -398,7 +415,7 @@
           <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
           <line x1="1" y1="10" x2="23" y2="10"/>
         </svg>
-        <span id="checkout-btn-text">SUPPORT $2.99</span>
+        <span id="checkout-btn-text">Support with $2.99</span>
       </button>
 
       <div class="stripe-secure-note">
@@ -406,10 +423,10 @@
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
-        <span>Encrypted & secure checkout via Lemon Squeezy</span>
+        <span>Secure checkout by Lemon Squeezy</span>
       </div>
       </div>
-      <div id="card-unavailable" class="stripe-secure-note hidden"><span>International payments are coming soon. Please use UPI for now.</span></div>
+      <div id="card-unavailable" class="stripe-secure-note hidden"><span>Card payments are coming soon. Use UPI for now.</span></div>
       </div>
     </div>
   </div>
@@ -419,28 +436,27 @@
     <div class="modal-content leaderboard-modal-content">
       <button class="btn-close-modal" data-modal="modal-leaderboard">&times;</button>
       <div class="leaderboard-header">
-        <div class="leaderboard-icon">🏆</div>
-        <h3>Hall of Fame</h3>
-        <p class="modal-desc">Top 10 players across all 3 game modes. Only registered accounts earn their place here.</p>
+                <h3 id="lb-title">Leaderboard</h3>
+        <p class="modal-desc">Top 10 signed-in players in each mode.</p>
       </div>
 
       <!-- Mode Tabs -->
       <div class="leaderboard-tabs">
         <button type="button" class="lb-tab active" data-mode="easy">
-          <span class="lb-tab-dot dot-easy"></span> EASY
+          Easy
         </button>
         <button type="button" class="lb-tab" data-mode="hard">
-          <span class="lb-tab-dot dot-hard"></span> HARD
+          Hard
         </button>
         <button type="button" class="lb-tab" data-mode="nightmare">
-          <span class="lb-tab-dot dot-nightmare"></span> NIGHTMARE
+          Nightmare
         </button>
       </div>
 
       <!-- Leaderboard List Container -->
       <div class="leaderboard-list-wrapper">
         <div class="leaderboard-list" id="leaderboard-list">
-          <div class="leaderboard-loading">Loading top rankings...</div>
+          <div class="leaderboard-loading">Loading…</div>
         </div>
       </div>
     </div>
@@ -450,6 +466,8 @@
 
   <script src="/js/config.js"></script>
   <script src="/js/progress.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/auth-social.js"></script>
   <script src="/js/menu.js"></script>
 </body>
 

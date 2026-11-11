@@ -104,28 +104,18 @@
   const btnLogout = document.getElementById('btn-logout');
   const btnDeleteAccount = document.getElementById('btn-delete-account');
 
-  // Auth Modal Tab switching
-  tabLogin.addEventListener('click', () => {
-    tabLogin.classList.add('active');
-    tabLogin.style.color = 'var(--paper)';
-    tabLogin.style.borderBottom = '2px solid var(--paper)';
-    tabRegister.classList.remove('active');
-    tabRegister.style.color = 'rgba(255,255,255,0.4)';
-    tabRegister.style.borderBottom = 'none';
-    formLogin.style.display = 'block';
-    formRegister.style.display = 'none';
-  });
-
-  tabRegister.addEventListener('click', () => {
-    tabRegister.classList.add('active');
-    tabRegister.style.color = 'var(--paper)';
-    tabRegister.style.borderBottom = '2px solid var(--paper)';
-    tabLogin.classList.remove('active');
-    tabLogin.style.color = 'rgba(255,255,255,0.4)';
-    tabLogin.style.borderBottom = 'none';
-    formRegister.style.display = 'block';
-    formLogin.style.display = 'none';
-  });
+  // Auth sheet tabs
+  const showAuthTab = (which) => {
+    const login = which === 'login';
+    tabLogin.classList.toggle('active', login);
+    tabRegister.classList.toggle('active', !login);
+    tabLogin.setAttribute('aria-selected', String(login));
+    tabRegister.setAttribute('aria-selected', String(!login));
+    formLogin.hidden = !login;
+    formRegister.hidden = login;
+  };
+  tabLogin.addEventListener('click', () => showAuthTab('login'));
+  tabRegister.addEventListener('click', () => showAuthTab('register'));
 
   // Update DOM from localStorage & custom auth state
   const updateUI = async () => {
@@ -149,30 +139,28 @@
         console.warn("Failed to fetch user status:", e);
       }
 
-      elUserStatus.textContent = (isSupporter ? 'SUPPORTER: ' : 'ACCOUNT: ') + username.toUpperCase();
+      elUserStatus.textContent = username;
+      elUserStatus.classList.toggle('supporter', Boolean(isSupporter));
       elUserAvatar.textContent = username.slice(0, 2).toUpperCase();
-      elUserAvatar.style.background = isSupporter ? '#ffd700' : '#ffd166';
-      elUserAvatar.style.color = '#16121f';
-      btnLink.style.display = 'none';
-      btnLogout.style.display = 'block';
-      if (btnDeleteAccount) btnDeleteAccount.style.display = 'block';
-      if (accountSection) accountSection.style.display = 'block';
-      if (accountName) accountName.textContent = 'Signed in as ' + username;
+      elUserAvatar.classList.add('signed-in');
+      elUserAvatar.classList.toggle('supporter', Boolean(isSupporter));
+      btnLink.hidden = true;
+      btnLogout.hidden = false;
+      if (btnDeleteAccount) btnDeleteAccount.hidden = false;
+      if (accountSection) accountSection.hidden = false;
+      if (accountName) accountName.textContent = 'Signed in as ' + username + (isSupporter ? ' (supporter)' : '');
     } else {
-      elUserStatus.textContent = 'GUEST ACCOUNT';
+      elUserStatus.textContent = 'Playing as guest';
+      elUserStatus.classList.remove('supporter');
       elUserAvatar.textContent = '?';
-      elUserAvatar.style.background = '';
-      elUserAvatar.style.color = '';
-      btnLink.style.display = 'block';
-      btnLogout.style.display = 'none';
-      if (btnDeleteAccount) btnDeleteAccount.style.display = 'none';
-      if (accountSection) accountSection.style.display = 'none';
+      elUserAvatar.classList.remove('signed-in', 'supporter');
+      btnLink.hidden = false;
+      btnLogout.hidden = true;
+      if (btnDeleteAccount) btnDeleteAccount.hidden = true;
+      if (accountSection) accountSection.hidden = true;
     }
     
-    elUserAvatar.style.display = 'flex';
-    if (clerkBtnContainer) {
-      clerkBtnContainer.style.display = 'none';
-    }
+
 
     // Settings
     volumeSlider.value = volume;
@@ -190,15 +178,31 @@
   };
 
   // Modal open/close actions
+  let modalOpener = null;
   const openModal = (modal) => {
+    modalOpener = document.activeElement;
     modal.classList.remove('hidden');
     playTone(523, 0.05, 'square', 0.06);
+    if (modal.id === 'modal-link-account' && window.SocialAuth) SocialAuth.onSheetOpen();
+    // Move focus into the sheet (first field on wide screens, the close button on phones)
+    setTimeout(() => {
+      const field = window.innerWidth >= 768 && modal.querySelector('input:not([type=hidden]):not([hidden])');
+      const target = field || modal.querySelector('.btn-close-modal');
+      if (target) target.focus({ preventScroll: true });
+    }, 60);
   };
 
   const closeModal = (modal) => {
+    if (modal.classList.contains('hidden')) return;
     modal.classList.add('hidden');
     playTone(330, 0.05, 'square', 0.06);
+    if (modalOpener && modalOpener.focus) { try { modalOpener.focus({ preventScroll: true }); } catch (e) {} }
   };
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || document.querySelector('.ui-dialog-backdrop')) return;
+    const open = Array.from(document.querySelectorAll('.modal:not(.hidden)')).pop();
+    if (open) closeModal(open);
+  });
 
   // ---------- Mode picker + one-tap play ----------
   const accountSection = document.getElementById('account-section');
@@ -215,7 +219,7 @@
       b.classList.toggle('active', on);
       b.setAttribute('aria-checked', on ? 'true' : 'false');
     });
-    if (playModeLabel) playModeLabel.textContent = m.toUpperCase();
+    if (playModeLabel) playModeLabel.textContent = m.charAt(0).toUpperCase() + m.slice(1);
     document.body.style.background = `hsl(${MODE_HUES[m]}, 72%, 54%)`;
     if (withSound) { playTone(m === 'easy' ? 523 : m === 'hard' ? 659 : 784, 0.05, 'square', 0.06); if (window.LS) LS.haptic('select'); }
   };
@@ -241,7 +245,7 @@
     const xpText = document.getElementById('menu-xp-text');
     if (elLvl) elLvl.textContent = li.level;
     if (fill) fill.style.width = (li.pct * 100) + '%';
-    if (xpText) xpText.textContent = `LV ${li.level} · ${li.into}/${li.need} XP`;
+    if (xpText) xpText.textContent = `Level ${li.level}: ${li.into} of ${li.need} XP`;
     const streak = LS.streak();
     if (elStreak) elStreak.textContent = streak;
     if (chipStreak) {
@@ -263,7 +267,7 @@
         </div>`).join('');
       const doneCount = ms.filter(m => m.done).length;
       const reset = document.getElementById('missions-reset');
-      if (reset) reset.textContent = doneCount === ms.length ? 'all done — new ones tomorrow' : `${doneCount}/${ms.length} done · +50 XP bonus for all`;
+      if (reset) reset.textContent = doneCount === ms.length ? 'All done. New ones tomorrow' : `${doneCount} of ${ms.length} done`;
     }
 
     const newDot = document.getElementById('skins-new');
@@ -290,7 +294,7 @@
       return `<button type="button" class="skin ${open ? '' : 'locked'} ${s.id === cur ? 'selected' : ''}" data-skin="${s.id}" ${open ? '' : 'aria-disabled="true"'}>
         <span class="skin-ball" style="${ballStyle(s)}"></span>
         <span class="skin-name">${esc(s.name)}</span>
-        <span class="skin-req">${open ? (s.id === cur ? 'EQUIPPED' : 'TAP TO USE') : '🔒 LEVEL ' + s.level}</span>
+        <span class="skin-req">${open ? (s.id === cur ? 'In use' : 'Tap to use') : '🔒 Level ' + s.level}</span>
       </button>`;
     }).join('');
   }
@@ -367,9 +371,8 @@
     if (!cachedLeaderboardData || !cachedLeaderboardData[mode] || cachedLeaderboardData[mode].length === 0) {
       lbList.innerHTML = `
         <div class="leaderboard-empty">
-          <div class="empty-icon">🎮</div>
-          <div class="empty-title">No Scores Recorded</div>
-          <div class="empty-desc">Be the first logged-in player to set a score in ${mode.toUpperCase()} mode!</div>
+          <div class="empty-title">No scores yet</div>
+          <div class="empty-desc">Sign in and play ${mode} mode to take the top spot.</div>
         </div>
       `;
       return;
@@ -386,16 +389,16 @@
       else medal = `#${item.rank}`;
 
       const isSupporter = item.isSupporter;
-      const supporterTag = isSupporter ? '<span class="lb-supporter-tag">SUPPORTER</span>' : '';
-      const avatarBg = isSupporter ? 'background: #ffd700; color: #16121f;' : 'background: rgba(255,255,255,0.12); color: #fff;';
+      const supporterTag = isSupporter ? '<span class="lb-supporter-tag">Supporter</span>' : '';
+      const isMe = String(item.username).toLowerCase() === (getUser() || '').toLowerCase();
 
       html += `
-        <div class="lb-row ${rankClass}">
+        <div class="lb-row ${rankClass}${isMe ? ' me' : ''}${isSupporter ? ' supporter' : ''}">
           <div class="lb-rank">${medal}</div>
           <div class="lb-player">
-            <div class="lb-avatar" style="${avatarBg}">${escapeHtml(String(item.username).slice(0, 2).toUpperCase())}</div>
+            <div class="lb-avatar">${escapeHtml(String(item.username).slice(0, 2).toUpperCase())}</div>
             <div class="lb-name-group">
-              <span class="lb-username">${escapeHtml(String(item.username).toUpperCase())}</span>
+              <span class="lb-username">${escapeHtml(String(item.username))}${isMe ? ' <em>(you)</em>' : ''}</span>
               ${supporterTag}
             </div>
           </div>
@@ -447,7 +450,7 @@
       btn.classList.add('active');
       const amt = btn.getAttribute('data-amount');
       if (customAmountInput) customAmountInput.value = amt;
-      if (checkoutBtnText) checkoutBtnText.textContent = `SUPPORT $${parseFloat(amt).toFixed(2)}`;
+      if (checkoutBtnText) checkoutBtnText.textContent = `Support with $${parseFloat(amt).toFixed(2)}`;
     });
   });
 
@@ -465,7 +468,7 @@
       });
       if (checkoutBtnText) {
         if (!isNaN(val) && val > 0) {
-          checkoutBtnText.textContent = `SUPPORT $${val.toFixed(2)}`;
+          checkoutBtnText.textContent = `Support with $${val.toFixed(2)}`;
         } else {
           checkoutBtnText.textContent = 'ENTER AN AMOUNT';
         }
@@ -478,7 +481,7 @@
     btnProceedCheckout.addEventListener('click', async () => {
       const token = localStorage.getItem('ls_token');
       if (!token) {
-        alert('Please log in first to support the creator!');
+        UI.alert('Sign in first so your supporter badge goes to the right account.', { title: 'Sign in to support' });
         closeModal(modalSupport);
         openModal(modalLink);
         return;
@@ -486,11 +489,11 @@
 
       const amountVal = customAmountInput ? parseFloat(customAmountInput.value) : 2.99;
       if (isNaN(amountVal) || amountVal < 1.0) {
-        alert('Please enter a contribution amount of at least $1.00 USD.');
+        UI.alert('Please enter a contribution amount of at least $1.00 USD.');
         return;
       }
       if (amountVal > 1000.0) {
-        alert('Maximum contribution amount is $1,000.00 USD.');
+        UI.alert('Maximum contribution amount is $1,000.00 USD.');
         return;
       }
 
@@ -509,9 +512,9 @@
         const data = await res.json();
         if (!res.ok) {
           if (res.status === 503) {
-            alert('🍋 Creator Support Setup Required:\n\n' + data.error + '\n\nTo enable checkout:\n1. Open your Vercel Dashboard -> Project Settings -> Environment Variables\n2. Add the following Lemon Squeezy keys:\n   • LEMONSQUEEZY_API_KEY\n   • LEMONSQUEEZY_STORE_ID\n   • LEMONSQUEEZY_VARIANT_ID\n   • LEMONSQUEEZY_WEBHOOK_SECRET\n3. Trigger a redeploy (or push to git) to apply the variables.');
+            UI.alert('🍋 Creator Support Setup Required:\n\n' + data.error + '\n\nTo enable checkout:\n1. Open your Vercel Dashboard -> Project Settings -> Environment Variables\n2. Add the following Lemon Squeezy keys:\n   • LEMONSQUEEZY_API_KEY\n   • LEMONSQUEEZY_STORE_ID\n   • LEMONSQUEEZY_VARIANT_ID\n   • LEMONSQUEEZY_WEBHOOK_SECRET\n3. Trigger a redeploy (or push to git) to apply the variables.');
             btnProceedCheckout.disabled = false;
-            if (checkoutBtnText) checkoutBtnText.textContent = `SUPPORT $${amountVal.toFixed(2)}`;
+            if (checkoutBtnText) checkoutBtnText.textContent = `Support with $${amountVal.toFixed(2)}`;
             return;
           }
           throw new Error(data.error || 'Checkout session failed');
@@ -519,10 +522,10 @@
         
         window.location.href = data.url;
       } catch (err) {
-        alert('Error: ' + err.message);
+        UI.alert('Error: ' + err.message);
         playTone(160, 0.2, 'sawtooth', 0.1);
         btnProceedCheckout.disabled = false;
-        if (checkoutBtnText) checkoutBtnText.textContent = `SUPPORT $${amountVal.toFixed(2)}`;
+        if (checkoutBtnText) checkoutBtnText.textContent = `Support with $${amountVal.toFixed(2)}`;
       }
     });
   }
@@ -566,7 +569,7 @@
       return;
     }
     upiAppBtn && upiAppBtn.classList.remove('disabled');
-    if (upiAppBtnText) upiAppBtnText.textContent = `PAY ₹${amt} WITH UPI APP`;
+    if (upiAppBtnText) upiAppBtnText.textContent = `Pay ₹${amt} in a UPI app`;
     if (upiQrImg) upiQrImg.src = API_BASE + `/api/support/upi-qr.svg?amount=${amt}`;
     clearTimeout(upiLinkTimer);
     upiLinkTimer = setTimeout(async () => {
@@ -602,7 +605,7 @@
       }
       if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
         e.preventDefault();
-        alert('UPI apps open on phones. On a computer, scan the QR code above with Google Pay, PhonePe, Paytm or any UPI app.');
+        UI.alert('UPI apps open on phones. On a computer, scan the QR code above with Google Pay, PhonePe, Paytm or any UPI app.');
       }
     });
   }
@@ -624,7 +627,7 @@
 
   if (btnUpiPaid) {
     btnUpiPaid.addEventListener('click', () => {
-      alert('🎉 Thank you so much for supporting LoopShot! Every rupee helps keep the game growing.');
+      UI.alert('🎉 Thank you so much for supporting LoopShot! Every rupee helps keep the game growing.');
       closeModal(modalSupport);
     });
   }
@@ -696,8 +699,9 @@
 
   // Settings: Reset score
   btnResetScore.addEventListener('click', () => {
-    if (getBest() === 0) return;
-    if (confirm('Are you sure you want to reset your personal best score?')) {
+    if (getBest() === 0) { UI.toast('No best scores to reset yet.'); return; }
+    UI.confirm('Your best scores in all three modes will go back to 0 on this device. Scores saved to your account are kept.', { title: 'Reset best scores?', ok: 'Reset', danger: true }).then(ok => {
+    if (ok) {
       localStorage.setItem('ls_best', '0');
       // If logged in, let's keep database but clear local storage best
       localStorage.setItem('ls_best_easy', '0');
@@ -705,7 +709,9 @@
       localStorage.setItem('ls_best_nightmare', '0');
       updateUI();
       playTone(160, 0.2, 'sawtooth', 0.12);
+      UI.toast('Best scores reset.');
     }
+    });
   });
 
   // Helper to submit pending score after login if one exists
@@ -725,7 +731,7 @@
         });
         if (res.ok) {
           localStorage.removeItem('ls_pending_score');
-          alert(`🎉 Great news! Your score of ${pending.score} (${pending.mode.toUpperCase()} mode) has been saved to your account!`);
+          UI.toast(`Saved your ${pending.mode} score of ${pending.score} to your account.`);
           updateUI();
           fetchGlobalScores();
         }
@@ -735,13 +741,98 @@
     }
   }
 
+  // Everything that happens after any successful sign-in (password, Google or Apple)
+  const completeSignIn = async (data, how) => {
+    localStorage.setItem('ls_token', data.token);
+    localStorage.setItem('ls_user', data.username);
+    const b = data.bestScores || { easy: 0, hard: 0, nightmare: 0 };
+    ['easy', 'hard', 'nightmare'].forEach(m => localStorage.setItem('ls_best_' + m, b[m] || 0));
+    localStorage.setItem('ls_best', Math.max(b.easy || 0, b.hard || 0, b.nightmare || 0));
+    closeModal(modalLink);
+    closeModal(modalPick);
+    updateUI();
+    playTone(523, 0.06, 'square', 0.08);
+    playTone(659, 0.06, 'square', 0.08, 0.05);
+    playTone(784, 0.1, 'square', 0.08, 0.1);
+    if (window.LS) LS.haptic('success');
+    UI.toast(how === 'register' || how === 'new' ? `Welcome, ${data.username}!` : `Signed in as ${data.username}`);
+    await checkAndSubmitPendingScore(data.token);
+    if (data.needsEmail && modalAddEmail) openModal(modalAddEmail);
+  };
+
+  const showError = (el, msg) => {
+    el.textContent = msg;
+    el.hidden = false;
+    playTone(160, 0.2, 'sawtooth', 0.1);
+    if (window.LS) LS.haptic('error');
+  };
+
+  // ---------- Google / Apple ----------
+  const modalPick = document.getElementById('modal-pick-username');
+  const formPick = document.getElementById('form-pick-username');
+  const pickInput = document.getElementById('pick-username');
+  const pickError = document.getElementById('auth-error-pick');
+  const socialError = document.getElementById('social-error');
+  let pendingSignup = null;
+
+  const handleSocialToken = async (provider, idToken) => {
+    socialError.hidden = true;
+    try {
+      const res = await fetch(API_BASE + '/api/auth/social', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, idToken })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sign-in failed. Please try again.');
+      if (data.needsUsername) {
+        pendingSignup = data.signupToken;
+        closeModal(modalLink);
+        pickInput.value = data.suggestion || '';
+        pickError.hidden = true;
+        openModal(modalPick);
+        return;
+      }
+      await completeSignIn(data, data.linked ? 'linked' : 'login');
+      if (data.linked) UI.toast(`${provider === 'google' ? 'Google' : 'Apple'} is now linked to ${data.username}`);
+    } catch (err) {
+      showError(socialError, err.message);
+    }
+  };
+
+  if (formPick) formPick.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    pickError.hidden = true;
+    const username = pickInput.value.trim();
+    if (!/^[A-Za-z0-9_.-]{3,15}$/.test(username)) return showError(pickError, 'Use 3–15 letters, numbers, _ . or -');
+    try {
+      const res = await fetch(API_BASE + '/api/auth/social/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signupToken: pendingSignup, username })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not create your account.');
+      pendingSignup = null;
+      await completeSignIn(data, 'new');
+    } catch (err) {
+      showError(pickError, err.message);
+    }
+  });
+
+  if (window.SocialAuth) {
+    SocialAuth.init({
+      onToken: handleSocialToken,
+      onError: (msg) => showError(socialError, msg)
+    });
+  }
+
   // Login Form Submission
   formLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
-    loginError.style.display = 'none';
+    loginError.hidden = true;
     const username = loginUsernameInput.value.trim();
     const password = loginPasswordInput.value;
-    
     try {
       const res = await fetch(API_BASE + '/api/auth/login', {
         method: 'POST',
@@ -749,55 +840,28 @@
         body: JSON.stringify({ username, password })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Invalid credentials');
-      
-      localStorage.setItem('ls_token', data.token);
-      localStorage.setItem('ls_user', data.username);
-      if (data.bestScores) {
-        localStorage.setItem('ls_best_easy', data.bestScores.easy || 0);
-        localStorage.setItem('ls_best_hard', data.bestScores.hard || 0);
-        localStorage.setItem('ls_best_nightmare', data.bestScores.nightmare || 0);
-        const maxScore = Math.max(data.bestScores.easy || 0, data.bestScores.hard || 0, data.bestScores.nightmare || 0);
-        localStorage.setItem('ls_best', maxScore);
-      }
-      
-      closeModal(modalLink);
-      updateUI();
-      playTone(523, 0.06, 'square', 0.08);
-      playTone(659, 0.06, 'square', 0.08, 0.05);
-
-      // Check if there was a score waiting to be saved from guest play
-      await checkAndSubmitPendingScore(data.token);
-
-      // Older accounts: ask for an email
-      if (data.needsEmail && modalAddEmail) openModal(modalAddEmail);
+      if (!res.ok) throw new Error(data.error || 'Wrong username or password.');
+      loginPasswordInput.value = '';
+      await completeSignIn(data, 'login');
     } catch (err) {
-      loginError.textContent = err.message;
-      loginError.style.display = 'block';
-      playTone(160, 0.2, 'sawtooth', 0.1);
+      showError(loginError, err.message === 'Failed to fetch' ? 'No connection. Check your internet and try again.' : err.message);
     }
   });
 
   // Register Form Submission
   formRegister.addEventListener('submit', async (e) => {
     e.preventDefault();
-    registerError.style.display = 'none';
+    registerError.hidden = true;
     const username = registerUsernameInput.value.trim();
     const password = registerPasswordInput.value;
     const email = registerEmailInput.value.trim();
-
-    const showRegisterError = (msg) => {
-      registerError.textContent = msg;
-      registerError.style.display = 'block';
-      playTone(160, 0.2, 'sawtooth', 0.1);
-    };
-    if (!EMAIL_RE.test(email)) return showRegisterError('Please enter a valid email address');
-    if (!/^[A-Za-z0-9_.-]{3,15}$/.test(username)) return showRegisterError('Username must be 3–15 characters: letters, numbers, _ . or -');
+    const fail = (msg) => showError(registerError, msg);
+    if (!EMAIL_RE.test(email)) return fail('Enter a valid email address.');
+    if (!/^[A-Za-z0-9_.-]{3,15}$/.test(username)) return fail('Username: 3–15 letters, numbers, _ . or -');
     const checks = passwordChecks(password);
-    if (!checks.len) return showRegisterError('Password must be 8–72 characters');
-    if (!checks.upper) return showRegisterError('Password needs at least one uppercase letter');
-    if (!checks.special) return showRegisterError('Password needs at least one special character');
-    
+    if (!checks.len) return fail('Password must be 8–72 characters.');
+    if (!checks.upper) return fail('Password needs an uppercase letter.');
+    if (!checks.special) return fail('Password needs a symbol, like ! or #.');
     try {
       const res = await fetch(API_BASE + '/api/auth/register', {
         method: 'POST',
@@ -805,27 +869,11 @@
         body: JSON.stringify({ email, username, password })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Registration failed');
-      
-      localStorage.setItem('ls_token', data.token);
-      localStorage.setItem('ls_user', data.username);
-      localStorage.setItem('ls_best_easy', '0');
-      localStorage.setItem('ls_best_hard', '0');
-      localStorage.setItem('ls_best_nightmare', '0');
-      localStorage.setItem('ls_best', '0');
-      
-      closeModal(modalLink);
-      updateUI();
-      playTone(523, 0.06, 'square', 0.08);
-      playTone(659, 0.06, 'square', 0.08, 0.05);
-      playTone(784, 0.1, 'square', 0.08, 0.1);
-
-      // Check if there was a score waiting to be saved from guest play
-      await checkAndSubmitPendingScore(data.token);
+      if (!res.ok) throw new Error(data.error || 'Could not create your account.');
+      registerPasswordInput.value = '';
+      await completeSignIn(data, 'register');
     } catch (err) {
-      registerError.textContent = err.message;
-      registerError.style.display = 'block';
-      playTone(160, 0.2, 'sawtooth', 0.1);
+      fail(err.message === 'Failed to fetch' ? 'No connection. Check your internet and try again.' : err.message);
     }
   });
 
@@ -833,11 +881,11 @@
   if (formAddEmail) {
     formAddEmail.addEventListener('submit', async (e) => {
       e.preventDefault();
-      addEmailError.style.display = 'none';
+      addEmailError.hidden = true;
       const email = addEmailInput.value.trim();
       if (!EMAIL_RE.test(email)) {
-        addEmailError.textContent = 'Please enter a valid email address';
-        addEmailError.style.display = 'block';
+        addEmailError.textContent = 'Enter a valid email address.';
+        addEmailError.hidden = false;
         return;
       }
       try {
@@ -852,24 +900,10 @@
         playTone(659, 0.08, 'square', 0.08);
       } catch (err) {
         addEmailError.textContent = err.message;
-        addEmailError.style.display = 'block';
+        addEmailError.hidden = false;
       }
     });
   }
-
-  // Logout button trigger
-  btnLogout.addEventListener('click', () => {
-    if (confirm('Are you sure you want to log out?')) {
-      localStorage.removeItem('ls_token');
-      localStorage.removeItem('ls_user');
-      localStorage.setItem('ls_best_easy', '0');
-      localStorage.setItem('ls_best_hard', '0');
-      localStorage.setItem('ls_best_nightmare', '0');
-      localStorage.setItem('ls_best', '0');
-      updateUI();
-      playTone(330, 0.1, 'sawtooth', 0.08);
-    }
-  });
 
   const clearLocalAccount = () => {
     localStorage.removeItem('ls_token');
@@ -880,30 +914,49 @@
     localStorage.setItem('ls_best', '0');
   };
 
-  // Permanently delete the account (App Store guideline 5.1.1(v))
+  // Sign out
+  btnLogout.addEventListener('click', async () => {
+    const ok = await UI.confirm('Your scores stay saved to your account. Sign in again any time.', { title: 'Sign out?', ok: 'Sign out' });
+    if (!ok) return;
+    clearLocalAccount();
+    updateUI();
+    playTone(330, 0.1, 'sawtooth', 0.08);
+    UI.toast('Signed out');
+  });
+
+  // Permanently delete the account (App Store 5.1.1(v), Google Play account deletion)
   if (btnDeleteAccount) {
     btnDeleteAccount.addEventListener('click', async () => {
       const token = localStorage.getItem('ls_token');
       if (!token) return;
-      if (!confirm('Delete your account permanently? Your username, email and saved scores will be erased. This cannot be undone.')) return;
-      const password = prompt('Enter your password to confirm:');
-      if (!password) return;
+      const sure = await UI.confirm('Your username, email and saved scores will be erased. This can’t be undone.', { title: 'Delete your account?', ok: 'Continue', danger: true });
+      if (!sure) return;
+
+      // Accounts made with Google/Apple have no password: confirm by typing the username
+      let hasPassword = true;
+      try {
+        const me = await fetch(API_BASE + '/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (me.ok) hasPassword = (await me.json()).hasPassword !== false;
+      } catch (e) {}
+      const username = getUser();
+      const answer = hasPassword
+        ? await UI.prompt('Enter your password to delete your account.', { title: 'Confirm with password', type: 'password', autocomplete: 'current-password', ok: 'Delete account', danger: true, label: 'Password' })
+        : await UI.prompt(`Type your username (${username}) to delete your account.`, { title: 'Confirm deletion', ok: 'Delete account', danger: true, label: 'Username' });
+      if (!answer) return;
       try {
         const res = await fetch(API_BASE + '/api/auth/account', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ password })
+          body: JSON.stringify(hasPassword ? { password: answer } : { confirm: answer })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          alert(data.error || 'Could not delete account. Please try again.');
-          return;
-        }
+        if (!res.ok) { await UI.alert(data.error || 'Could not delete the account. Please try again.', { title: 'Account not deleted' }); return; }
         clearLocalAccount();
+        closeModal(modalSettings);
         updateUI();
-        alert('Your account has been deleted.');
+        await UI.alert('Your account and its data have been erased.', { title: 'Account deleted' });
       } catch (e) {
-        alert('Could not reach the server. Please check your connection and try again.');
+        await UI.alert('No connection. Check your internet and try again.', { title: 'Account not deleted' });
       }
     });
   }
@@ -979,15 +1032,19 @@
     cx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
     if (W >= 768) {
-      CX = 380 + (W - 380) * 0.5;
+      CX = 400 + (W - 400) * 0.5;
       CY = H / 2;
-      R = Math.min(W - 380, H) * 0.32;
+      R = Math.min(W - 400, H) * 0.3;
+      document.documentElement.style.removeProperty('--panel-top');
     } else {
-      // Hero area is the top ~30% of the screen on phones
-      const hero = Math.max(170, H * 0.3);
+      // Ring under the top bar; the panel starts just below it
+      const safeTop = parseFloat(getComputedStyle(document.querySelector('.hero-bar')).paddingTop) || 14;
+      const barH = safeTop + 40;
+      R = Math.max(58, Math.min(W * 0.3, H * 0.15));
+      const lwRing = Math.max(8, R * 0.085);
       CX = W / 2;
-      CY = hero * 0.55;
-      R = Math.min(W * 0.5, hero * 0.8) * 0.5;
+      CY = barH + 18 + R + lwRing;
+      document.documentElement.style.setProperty('--panel-top', Math.round(CY + R + lwRing + 22) + 'px');
     }
     document.documentElement.style.setProperty('--hero-r', R + 'px');
     updateTitlePosition();
@@ -1096,10 +1153,10 @@
     const msg = paidAmount 
       ? `🎉 Thank you so much for your generous $${paidAmount} contribution to LoopShot! Your golden SUPPORTER badge is now active.`
       : '🎉 Thank you so much for supporting LoopShot! Your golden SUPPORTER badge is now active.';
-    alert(msg);
+    UI.alert(msg);
     window.history.replaceState({}, document.title, window.location.pathname);
   } else if (urlParams.get('payment') === 'cancelled') {
-    alert('Payment was cancelled. You can support anytime! Thanks for playing LoopShot.');
+    UI.alert('Payment was cancelled. You can support anytime! Thanks for playing LoopShot.');
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 
